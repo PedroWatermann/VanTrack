@@ -1,0 +1,12 @@
+# Segredos: NUNCA commitar o .env (tem a senha do banco)
+.env
+.env.*
+!.env.example
+
+# Dart / Dart Frog
+.dart_tool/
+.dart_frog/
+build/
+
+# O .gitignore da raiz ignora *.lock; em aplicações o pubspec.lock deve ir para o repositório
+!pubspec.lock
