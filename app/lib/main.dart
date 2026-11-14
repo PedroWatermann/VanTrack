@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
 
+import 'compartilhado/cores.dart';
+
 /// Ponto de entrada do app VanTrack (UC-S05 Registrar Embarque).
 ///
-/// Por enquanto (VT-48 / D-01) só abre uma tela inicial simples para
-/// confirmar que o projeto roda no Android e na Web (RNF-004).
-/// Nas próximas tasks:
-/// - VT-50 (D-03) troca a tela inicial pela tela de login;
-/// - VT-51 (D-04) escolhe aqui, em uma linha só, qual ModuloEmbarque usar.
+/// Roda no Android e na Web (RNF-004).
 void main() {
   runApp(const VanTrackApp());
 }
 
+/// Configuração geral do app: título, tema e tela inicial.
 class VanTrackApp extends StatelessWidget {
   const VanTrackApp({super.key});
 
@@ -20,7 +19,7 @@ class VanTrackApp extends StatelessWidget {
       title: 'VanTrack',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorSchemeSeed: const Color(0xFF2E7D32),
+        colorSchemeSeed: CoresApp.verde,
         useMaterial3: true,
       ),
       home: const TelaInicial(),
@@ -28,7 +27,7 @@ class VanTrackApp extends StatelessWidget {
   }
 }
 
-/// Tela provisória. Será substituída pela tela de login (VT-50).
+/// Tela inicial provisória, só com o nome do app.
 class TelaInicial extends StatelessWidget {
   const TelaInicial({super.key});
 
