@@ -1,0 +1,266 @@
+@startuml diagrama-classes-uc-s05
+' Diagrama 1 de 3 — Domínio do back-end do UC-S05 Registrar Embarque
+' (com o «include» UC-I02 e o fluxo A1). Task B-01.
+' Diagrama 2: diagrama-classes-uc-s05-backend.puml (apresentação, aplicação, infraestrutura)
+' Diagrama 3: diagrama-classes-uc-s05-app.puml (aplicativo Flutter)
+
+title UC-S05 Registrar Embarque — Diagrama de classes (1/3): domínio do back-end
+
+set namespaceSeparator none
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+skinparam shadowing false
+hide empty members
+
+' ===================================================================
+package "compartilhado :: domínio" as comp_dom {
+  class HorarioBrasilia <<utilitário>> {
+    + {static} formatarHoraMinuto(dataHora : DateTime) : String
+  }
+  note bottom of HorarioBrasilia
+    Converte para UTC-3 (sem horário de verão)
+    antes de formatar HH:MM. O servidor pode
+    estar em UTC.
+  end note
+}
+
+' ===================================================================
+package "cadastro :: domínio" as cad_dom {
+
+  class Aluno {
+    + id : int {readOnly}
+    + nome : String {readOnly}
+    + dataNascimento : DateTime {readOnly}
+    + ehMenorDeIdade(referencia : DateTime) : bool
+  }
+
+  enum Papel {
+    MOTORISTA
+    RESPONSAVEL
+  }
+
+  abstract class Usuario {
+    + id : int {readOnly}
+    + nome : String {readOnly}
+    + login : String {readOnly}
+    - senhaHash : String
+    + {abstract} papel : Papel
+    + autenticar(senha : String) : bool
+  }
+
+  class Responsavel {
+    + telefone : String {readOnly}
+    + email : String {readOnly}
+  }
+
+  class Motorista {
+    + telefone : String {readOnly}
+    + cnh : String {readOnly}
+  }
+
+  class Van {
+    + id : int {readOnly}
+    + placa : String {readOnly}
+    + modelo : String {readOnly}
+    + capacidade : int {readOnly}
+  }
+
+  class VinculoMotoristaVan {
+    + id : int {readOnly}
+    + inicio : DateTime {readOnly}
+    + fim : DateTime? {readOnly}
+    + estaAtivo() : bool
+    + autoriza(motoristaId : int) : bool
+  }
+
+  interface VinculoRepository <<contrato>> {
+    + buscarResponsaveis(alunoId : int) : Future<List<Responsavel>>
+    + buscarVinculoAtivo(vanId : int) : Future<VinculoMotoristaVan?>
+  }
+}
+
+' ===================================================================
+package "autenticação :: domínio (apoio, fora do ciclo de implementação)" as aut_dom {
+
+  class Sessao {
+    + token : String {readOnly}
+    + criadaEm : DateTime {readOnly}
+    + estaValida(agora : DateTime) : bool
+  }
+
+  interface SessaoRepository <<contrato>> {
+    + buscarPorToken(token : String) : Future<Sessao?>
+    + salvar(sessao : Sessao) : Future<void>
+  }
+}
+
+' ===================================================================
+package "rota :: domínio" as rota_dom {
+
+  enum Trajeto {
+    IDA
+    VOLTA
+  }
+
+  enum SituacaoPresenca {
+    CONFIRMADO
+    AUSENTE
+    EMBARCADO
+  }
+
+  class Localizacao <<value object>> {
+    + latitude : double {readOnly}
+    + longitude : double {readOnly}
+  }
+
+  class Rota {
+    + id : int {readOnly}
+    + data : DateTime {readOnly}
+    + trajeto : Trajeto {readOnly}
+    + horarioPrevisto : DateTime {readOnly}
+    + situacao : String {readOnly}
+  }
+
+  class PontoParada {
+    + id : int {readOnly}
+    + endereco : String {readOnly}
+    + localizacao : Localizacao {readOnly}
+  }
+
+  class Presenca {
+    + id : int {readOnly}
+    + ordem : int {readOnly}
+    - situacao : SituacaoPresenca
+    + estaConfirmada() : bool
+    + registrarEmbarque(registroId : String, dataHora : DateTime, localizacao : Localizacao?) : Embarque
+  }
+
+  class Embarque {
+    + id : int? {readOnly}
+    + registroId : String {readOnly}
+    + dataHora : DateTime {readOnly}
+    + localizacao : Localizacao? {readOnly}
+  }
+
+  class EmbarqueNaoPermitidoException <<exception>> {
+    + situacaoAtual : SituacaoPresenca {readOnly}
+  }
+
+  class EmbarqueDuplicadoException <<exception>> {
+    + registroId : String {readOnly}
+  }
+
+  interface PresencaRepository <<contrato>> {
+    + buscarConfirmados(rotaId : int) : Future<List<Presenca>>
+    + buscarPresenca(alunoId : int, rotaId : int) : Future<Presenca?>
+    + buscarPorRegistroId(registroId : String) : Future<Presenca?>
+    + salvar(presenca : Presenca) : Future<void>
+  }
+
+  interface RotaRepository <<contrato>> {
+    + buscarPorId(rotaId : int) : Future<Rota?>
+    + buscarDoMotorista(motoristaId : int, data : DateTime) : Future<Rota?>
+  }
+}
+
+' ===================================================================
+package "notificacao :: domínio" as not_dom {
+
+  enum TipoMovimentacao {
+    EMBARQUE
+    DESEMBARQUE
+  }
+
+  class Notificacao {
+    + id : int? {readOnly}
+    + tipo : TipoMovimentacao {readOnly}
+    + mensagem : String {readOnly}
+    + dataHoraEvento : DateTime {readOnly}
+    - lida : bool
+    + {static} deEmbarque(destinatario : Responsavel, aluno : Aluno, dataHoraEmbarque : DateTime) : Notificacao
+    + marcarComoLida() : void
+    + pertenceA(responsavelId : int) : bool
+  }
+
+  interface NotificacaoRepository <<contrato>> {
+    + registrarComunicado(notificacoes : List<Notificacao>) : Future<void>
+    + buscarDoResponsavel(responsavelId : int, desde : DateTime?) : Future<List<Notificacao>>
+    + buscarPorId(id : int) : Future<Notificacao?>
+    + salvar(notificacao : Notificacao) : Future<void>
+  }
+}
+
+' ===================================================================
+' Relacionamentos — usuários e autenticação
+Motorista --|> Usuario
+Responsavel --|> Usuario
+Usuario --> Papel
+Sessao "0..*" --> "1" Usuario : usuário logado >
+SessaoRepository ..> Sessao
+
+note right of Usuario
+  Login e senha fazem parte do modelo,
+  mas o login NÃO é o caso de uso
+  implementado neste ciclo (regra da
+  disciplina). Na entrega, só serve para
+  identificar quem faz a requisição
+  (RN-012, RN-002).
+end note
+
+' Relacionamentos — cadastro
+Aluno "0..*" -- "0..*" Responsavel : responsáveis >
+Van "1" -- "0..*" VinculoMotoristaVan : histórico de motoristas >
+Motorista "1" -- "0..*" VinculoMotoristaVan : vínculos >
+
+note right of VinculoMotoristaVan
+  RN-012: no máximo um vínculo
+  ativo (fim nulo) por van.
+end note
+
+note bottom of Responsavel
+  RN-009: aluno menor de idade
+  tem pelo menos 1 responsável.
+  Aluno maior pode ter 0 (A1 do UC-I02).
+end note
+
+' Relacionamentos — rota
+Rota "0..*" --> "1" Van : realizada por >
+Rota "1" -- "0..*" Presenca : presenças do dia >
+Presenca "0..*" --> "1" Aluno : aluno >
+Presenca "0..*" --> "1" PontoParada : embarca em >
+Presenca "1" *-- "0..1" Embarque : embarque >
+Presenca ..> EmbarqueNaoPermitidoException : <<lança>>
+Presenca --> SituacaoPresenca
+Rota --> Trajeto
+PontoParada *-- Localizacao
+Embarque *-- Localizacao
+
+note right of Presenca
+  registrarEmbarque (RN-010):
+  só se situacao = CONFIRMADO;
+  muda para EMBARCADO e cria o Embarque.
+  Senão lança EmbarqueNaoPermitidoException
+  (vira HTTP 409).
+end note
+
+note bottom of Embarque
+  registroId: UUID gerado no aparelho
+  (idempotência, RNF-006).
+  dataHora: momento do toque, não do envio.
+end note
+
+' Relacionamentos — notificação
+Notificacao "0..*" --> "1" Responsavel : destinatário >
+Notificacao "0..*" --> "1" Aluno : sobre >
+Notificacao --> TipoMovimentacao
+Notificacao ..> HorarioBrasilia : <<usa>>
+
+' Contratos de repositório — dependências de tipo
+PresencaRepository ..> Presenca
+PresencaRepository ..> EmbarqueDuplicadoException : <<lança>>
+RotaRepository ..> Rota
+VinculoRepository ..> Responsavel
+VinculoRepository ..> VinculoMotoristaVan
+NotificacaoRepository ..> Notificacao
+
+@enduml
