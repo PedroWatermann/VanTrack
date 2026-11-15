@@ -1,0 +1,3 @@
+tags:
+  # Testes que acessam o banco de verdade (precisam do DATABASE_URL e do reset feito).
+  integracao:
