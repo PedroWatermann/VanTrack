@@ -1,5 +1,6 @@
 import '../../cadastro/dominio/aluno.dart';
 import 'embarque.dart';
+import 'excecoes.dart';
 import 'localizacao.dart';
 import 'ponto_parada.dart';
 
@@ -66,16 +67,34 @@ class Presenca {
   /// A presença está CONFIRMADO (pode embarcar)?
   bool estaConfirmada() => _situacao == SituacaoPresenca.confirmado;
 
-  /// RN-010: registra o embarque desta presença. Só se estiver CONFIRMADO; muda
-  /// para EMBARCADO e cria o [Embarque]. Senão lança
-  /// `EmbarqueNaoPermitidoException` (409).
+  /// RN-010: registra o embarque desta presença (UC-S05 passos 3 e 4; RF-009).
   ///
-  /// Implementação: task B-04 (Membro B).
+  /// Só se estiver CONFIRMADO: muda a situação para EMBARCADO e cria o
+  /// [Embarque] com a [dataHora] do toque no aparelho (não a do servidor) e a
+  /// [localizacao], quando disponível. Senão lança
+  /// [EmbarqueNaoPermitidoException] (vira 409 na apresentação), inclusive
+  /// quando o aluno já embarcou com outro `registroId`.
+  ///
+  /// Não confere se o [registroId] já foi processado: a idempotência é
+  /// coordenada pelo `EmbarqueService` antes de chamar este método (RNF-006).
   Embarque registrarEmbarque(
     String registroId,
     DateTime dataHora, [
     Localizacao? localizacao,
   ]) {
-    throw UnimplementedError('Presenca.registrarEmbarque: task B-04.');
+    // RN-010: só embarca quem está CONFIRMADO. AUSENTE não tem embarque e
+    // EMBARCADO não embarca de novo.
+    if (!estaConfirmada()) {
+      throw EmbarqueNaoPermitidoException(_situacao);
+    }
+
+    final embarque = Embarque(
+      registroId: registroId,
+      dataHora: dataHora,
+      localizacao: localizacao,
+    );
+    _situacao = SituacaoPresenca.embarcado;
+    _embarque = embarque;
+    return embarque;
   }
 }
