@@ -1,17 +1,28 @@
 import 'package:flutter/material.dart';
 
+import 'avisos/apresentacao/tela_avisos.dart';
+import 'compartilhado/api_client.dart';
 import 'compartilhado/cores.dart';
+import 'compartilhado/sessao.dart';
+import 'embarque/apresentacao/tela_rota_do_dia.dart';
+import 'login/aplicacao/login_service.dart';
+import 'login/apresentacao/tela_login.dart';
 
 /// Ponto de entrada do app VanTrack (UC-S05 Registrar Embarque).
 ///
-/// Roda no Android e na Web (RNF-004).
+/// Roda no Android e na Web (RNF-004). É aqui que as peças do app são
+/// criadas e ligadas umas às outras.
 void main() {
-  runApp(const VanTrackApp());
+  final sessao = Sessao();
+  final api = ApiClient(sessao: sessao);
+  runApp(VanTrackApp(loginService: LoginService(api: api, sessao: sessao)));
 }
 
-/// Configuração geral do app: título, tema e tela inicial.
+/// Configuração geral do app: título, tema e tela inicial (login).
 class VanTrackApp extends StatelessWidget {
-  const VanTrackApp({super.key});
+  const VanTrackApp({super.key, required this.loginService});
+
+  final LoginService loginService;
 
   @override
   Widget build(BuildContext context) {
@@ -22,23 +33,10 @@ class VanTrackApp extends StatelessWidget {
         colorSchemeSeed: CoresApp.verde,
         useMaterial3: true,
       ),
-      home: const TelaInicial(),
-    );
-  }
-}
-
-/// Tela inicial provisória, só com o nome do app.
-class TelaInicial extends StatelessWidget {
-  const TelaInicial({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Text(
-          'VanTrack',
-          style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
-        ),
+      home: TelaLogin(
+        loginService: loginService,
+        telaDoMotorista: (usuario) => TelaRotaDoDia(usuario: usuario),
+        telaDoResponsavel: (usuario) => TelaAvisos(usuario: usuario),
       ),
     );
   }

@@ -29,15 +29,15 @@ class DadosMock {
   static const int motoristaAtivoId = 1;
 
   /// Usuários exibidos na tela de login.
-  /// Os nomes dos motoristas e responsáveis devem ser os mesmos do banco de
-  /// dados de teste (seed). Se forem alterados lá, alterar aqui também.
+  /// Os nomes são os mesmos do banco de dados de teste (supabase/seed.sql).
+  /// Se forem alterados lá, alterar aqui também.
   static const List<Map<String, dynamic>> usuarios = [
-    {'id': 1, 'nome': 'Marcos Pereira', 'papel': 'MOTORISTA'}, // motorista ativo da van da rota
-    {'id': 2, 'nome': 'Rafael Costa', 'papel': 'MOTORISTA'}, // sem vínculo com van (para testar a RN-012)
-    {'id': 1, 'nome': 'Juliana Souza', 'papel': 'RESPONSAVEL'}, // responsável pela Ana
-    {'id': 2, 'nome': 'Ricardo Souza', 'papel': 'RESPONSAVEL'}, // responsável pela Ana
+    {'id': 1, 'nome': 'João Pereira', 'papel': 'MOTORISTA'}, // motorista ativo da van da rota
+    {'id': 2, 'nome': 'Marcos Oliveira', 'papel': 'MOTORISTA'}, // sem vínculo com van (para testar a RN-012)
+    {'id': 1, 'nome': 'Maria Souza', 'papel': 'RESPONSAVEL'}, // responsável pela Ana
+    {'id': 2, 'nome': 'Paulo Souza', 'papel': 'RESPONSAVEL'}, // responsável pela Ana
     {'id': 3, 'nome': 'Fernanda Reis', 'papel': 'RESPONSAVEL'}, // responsável pela Beatriz
-    {'id': 4, 'nome': 'Paula Alves', 'papel': 'RESPONSAVEL'}, // responsável pelo Bruno
+    {'id': 4, 'nome': 'Ricardo Alves', 'papel': 'RESPONSAVEL'}, // responsável pelo Bruno
   ];
 
   /// Dados que aparecem no topo da tela "Rota do dia".
@@ -54,19 +54,19 @@ class DadosMock {
       'alunoId': 1,
       'nome': 'Ana Souza',
       'ordem': 1,
-      'pontoParada': {'endereco': 'Av. Brasil, 1500', 'latitude': -23.4205, 'longitude': -51.9331},
+      'pontoParada': {'endereco': 'Rua das Acácias, 100', 'latitude': -23.4205, 'longitude': -51.9331},
     },
     {
       'alunoId': 2,
       'nome': 'Beatriz Reis',
       'ordem': 2,
-      'pontoParada': {'endereco': 'Rua Neo Alves Martins, 820', 'latitude': -23.4231, 'longitude': -51.9387},
+      'pontoParada': {'endereco': 'Avenida Brasil, 1500', 'latitude': -23.4230, 'longitude': -51.9380},
     },
     {
       'alunoId': 3,
       'nome': 'Carlos Lima',
       'ordem': 3,
-      'pontoParada': {'endereco': 'Rua das Flores, 210', 'latitude': -23.4262, 'longitude': -51.9410},
+      'pontoParada': {'endereco': 'Rua das Flores, 210', 'latitude': -23.4262, 'longitude': -51.9412},
     },
   ];
 
