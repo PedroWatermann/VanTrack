@@ -13,11 +13,13 @@ REGRAS DE NEGÓCIO -> REQUISITOS -> CASO DE USO -> DIAGRAMA DE SEQUÊNCIA
 
 | Situação deste documento | Task |
 |---|---|
-| Seção 1 — Identificação das classes | **B-01** (este PR) |
-| Seção 2 — Diagrama de classes | **B-01** (este PR) |
-| Arquitetura em camadas, diretórios e decisões arquiteturais | B-02 (próxima branch) |
-| Documentação das classes principais e rastreabilidade até as classes | B-03 |
-| Seção 3 — Pontos para a equipe decidir | atualizada a cada task |
+| Seção 1 — Identificação das classes | B-01 (VT-21), mergeada |
+| Seção 2 — Diagrama de classes | B-01 (VT-21), mergeada |
+| Seção 3 — Arquitetura em camadas | **B-02 (VT-22)** |
+| Seção 4 — Estrutura de diretórios | **B-02 (VT-22)** |
+| Seção 5 — Decisões arquiteturais | **B-02 (VT-22)** |
+| Seções 6 e 7 — Documentação das classes principais e rastreabilidade até as classes | B-03 (VT-23) |
+| Seção 8 — Pontos para a equipe decidir | atualizada a cada task |
 
 ---
 
@@ -69,13 +71,13 @@ As mensagens dos diagramas de sequência viraram operações com o mesmo nome se
 | `buscarConfirmados(rotaId)` | `PresencaRepository.buscarConfirmados` |
 | `registrarEmbarque(alunoId, dataHora, local)` | `EmbarqueController.registrarEmbarque` → `EmbarqueService.registrarEmbarque` |
 | `buscarPresenca(alunoId, rotaId)` | `PresencaRepository.buscarPresenca` |
-| `registrarEmbarque(dataHora, local)` em `Presenca` | `Presenca.registrarEmbarque(registroId, dataHora, localizacao)` (ganhou o `registroId`, ver seção 3) |
+| `registrarEmbarque(dataHora, local)` em `Presenca` | `Presenca.registrarEmbarque(registroId, dataHora, localizacao)` (ganhou o `registroId`, ver seção 8) |
 | `salvar(presenca)` | `PresencaRepository.salvar` |
 | `guardar(registroEmbarque)` | `FilaEmbarques.guardar` (implementado por `ArmazenamentoLocal`) |
 | `sincronizar(registros)` | `ModuloEmbarqueComFila.sincronizar` → `EmbarqueRemoto.sincronizar` → `EmbarqueController.sincronizar` |
 | `notificarMovimentacao(presenca, tipo)` | `NotificacaoService.notificarMovimentacao` |
 | `buscarResponsaveis(aluno)` | `VinculoRepository.buscarResponsaveis` |
-| `montarMensagem(tipo, horário)` | `Notificacao.deEmbarque(...)`. A regra passou do service para a entidade, para a entidade não ficar anêmica (ver seção 3) |
+| `montarMensagem(tipo, horário)` | `Notificacao.deEmbarque(...)`. A regra passou do service para a entidade, para a entidade não ficar anêmica (ver seção 8) |
 | `registrarComunicado(evento)` | `NotificacaoRepository.registrarComunicado` |
 
 ### 1.2 Classes que vieram de outras fontes
@@ -274,7 +276,320 @@ Mesma ordem do diagrama de sequência `UC-S05.puml`:
 
 ---
 
-## 3. Pontos para a equipe decidir
+## 3. Arquitetura em camadas
+
+O back-end e o app usam as mesmas quatro camadas. Elas vêm da distribuição de
+responsabilidades dos diagramas de sequência do 1º bimestre (boundary → control/serviço →
+entity → database/sistema externo), agora com nomes de camada:
+
+### 3.1 As camadas e as classes de cada uma
+
+| Camada | Responsabilidade | Back-end (Dart Frog) | App (Flutter) |
+|---|---|---|---|
+| **Apresentação** | Receber a ação do usuário ou a requisição HTTP e devolver a resposta. Converte formatos (JSON, widgets) e erros em códigos/mensagens. **Sem regra de negócio** | arquivos de `routes/`, `EmbarqueController`, `NotificacaoController`, `AutenticacaoController`, `AutenticacaoMiddleware`, `UsuarioLogado`, CORS | `TelaRotaDoDia`, `FaixaSemConexao`, tela de login, tela "Avisos", `CoresApp` |
+| **Aplicação** | Coordenar o caso de uso: chamar os repositórios e as entidades na ordem do fluxo, validar acesso e acionar o `<<include>>`. Não sabe nada de HTTP, SQL ou widgets | `EmbarqueService`, `ResultadoRegistro`, `NotificacaoService` (contrato), `NotificacaoServiceVazio`, `NotificacaoServicePadrao`, `AvisosService`, `AutenticacaoService`, `AcessoNegadoException`, `NaoEncontradoException` | `ModuloEmbarque` e seus tipos, `ModuloEmbarqueOnline`, `ModuloEmbarqueComFila`, `RotaDoDiaService`, `Sessao` do app |
+| **Domínio** | As regras que pertencem ao próprio conceito (RN-010, RN-012, RN-002) e os **contratos** dos repositórios. Dart puro | entidades, value objects, enums e exceções de `cadastro`, `rota` e `notificacao`; `HorarioBrasilia`; contratos `PresencaRepository`, `RotaRepository`, `VinculoRepository`, `NotificacaoRepository`, `SessaoRepository`, `UsuarioRepository` | `AlunoDaRota`, `RotaDoDia`, `RegistroEmbarque`, `Localizacao`, `EnvioRecusadoException`, `SemConexaoException`; contratos `EmbarqueRemoto`, `FilaEmbarques`, `Conectividade`, `Localizador` |
+| **Infraestrutura** | Falar com o mundo de fora: banco, `.env`, HTTP, armazenamento do aparelho, GPS e rede. **Implementa** os contratos do domínio | `ConexaoBanco`, `lerDatabaseUrl()` (`ambiente.dart`), `PresencaRepositoryPostgres`, `RotaRepositoryPostgres`, `VinculoRepositoryPostgres`, `NotificacaoRepositoryPostgres`, `SessaoRepositoryPostgres` | `ApiClient`, `Config`, `EmbarqueApi`, `ArmazenamentoLocal`, `MonitorConectividade`, `LocalizadorGeolocator`, dados de mock |
+
+Existe ainda um ponto de **composição** em cada lado: o único lugar que conhece ao mesmo tempo
+o contrato e a implementação, e liga um ao outro.
+
+| Lado | Onde | O que faz |
+|---|---|---|
+| Back-end | `routes/_middleware.dart` | Cria a `ConexaoBanco` e os repositórios Postgres e os entrega aos services e controllers por `provider`. A troca do `NotificacaoServiceVazio` pelo `NotificacaoServicePadrao` (B-11) é uma linha aqui |
+| App | `lib/main.dart` | Escolhe a implementação de `ModuloEmbarque` (troca do Online pelo ComFila na E-05: uma linha), lê `API_URL`/`USE_MOCK` e liga a `FaixaSemConexao` ao `MonitorConectividade` |
+
+### 3.2 Dependências permitidas
+
+```text
+        APRESENTAÇÃO  ──────►  APLICAÇÃO  ──────►  DOMÍNIO  ◄──────  INFRAESTRUTURA
+   (routes, controllers,     (services,        (entidades,          (Postgres, http,
+    middleware, telas)        ModuloEmbarque)   contratos)           shared_preferences)
+
+   COMPOSIÇÃO (routes/_middleware.dart, main.dart): conhece todas e liga contrato -> implementação
+```
+
+- A seta vai sempre **para dentro**, até o domínio. O domínio não depende de nenhuma camada.
+- A infraestrutura depende do domínio porque **implementa os seus contratos** (inversão de
+  dependência). A aplicação usa só o contrato, e por isso é testada com *mocks* do mocktail,
+  sem banco e sem rede.
+- A apresentação pode **ler** os tipos do domínio que o service devolve (ex.: o controller
+  monta o JSON a partir de uma `Presenca`), mas não chama comportamento de entidade nem
+  repositório.
+
+### 3.3 Dependências proibidas
+
+| Proibido | Por quê | Exemplo do que **não** fazer |
+|---|---|---|
+| Controller acessar repositório | A coordenação é do service; o controller só converte | `EmbarqueController` chamando `presencaRepository.salvar` |
+| Controller ou tela com regra de negócio | A regra fica onde está o conceito (entidade) ou a coordenação (service) | Controller testando `situacao == CONFIRMADO` antes de chamar o service |
+| Domínio importar framework ou biblioteca de I/O | O domínio é a parte estável; tem que rodar em teste puro | `import 'package:dart_frog/...'`, `package:postgres`, `package:http`, `package:flutter/...` ou `shared_preferences` dentro de `dominio/` |
+| Aplicação depender de implementação concreta | Impede trocar e testar com mock | `EmbarqueService` recebendo `PresencaRepositoryPostgres` em vez de `PresencaRepository` |
+| Infraestrutura chamar aplicação ou apresentação | Inverteria o fluxo e criaria ciclo | `PresencaRepositoryPostgres` chamando `NotificacaoService` |
+| Arquivo de `routes/` com lógica | Dart Frog exige o arquivo, mas a lógica fica no controller | SQL ou validação dentro de `routes/rotas/[rotaId]/embarques/index.dart` |
+| Tela falar direto com a API | A tela só conhece `ModuloEmbarque` e `RotaDoDiaService` (contrato D–E) | `TelaRotaDoDia` usando `ApiClient` ou `http` |
+| Entidade alterar o estado de outra | Cada entidade guarda o próprio estado | `Notificacao` mudando a situação da `Presenca` |
+
+### 3.4 Camada lógica não é diretório físico
+
+**Camada** é uma regra de responsabilidade e de dependência ("quem pode chamar quem").
+**Diretório** é só onde o arquivo fica. As duas coisas andam juntas na maior parte do projeto,
+mas não são a mesma coisa:
+
+- As pastas são organizadas **primeiro por funcionalidade** (`embarque/`, `notificacao/`,
+  `rota/`...) e só **dentro** de cada módulo por camada. Duas classes da mesma camada podem estar
+  em pastas diferentes (ex.: `Presenca` em `rota/dominio/` e `Notificacao` em
+  `notificacao/dominio/`).
+- `routes/` é **apresentação**, mas fica fora de `lib/` porque o Dart Frog cria as rotas HTTP a
+  partir dos nomes dos arquivos dessa pasta.
+- No app, `compartilhado/` é uma pasta plana com poucos arquivos de apoio, mas cada arquivo
+  pertence a uma camada: `api_client.dart` e `config.dart` são infraestrutura, `sessao.dart` é
+  aplicação e `cores.dart` é apresentação. A camada está indicada no comentário `///` de cada
+  classe.
+- O módulo `embarque/` do back-end não tem pasta `dominio/`: as entidades que ele usa
+  (`Presenca`, `Embarque`) pertencem ao conceito de rota e ficam em `rota/dominio/`
+  (ver 4.1).
+
+### 3.5 Como conferir no PR
+
+O revisor pode rodar, a partir da raiz do repositório:
+
+```bash
+# O domínio não pode importar framework nem biblioteca de I/O (deve sair vazio)
+grep -rnE "package:(dart_frog|postgres|http|flutter|shared_preferences|connectivity_plus|geolocator)" backend/lib/*/dominio app/lib/*/dominio
+
+# Controllers não podem importar repositórios (deve sair vazio)
+grep -rn "_repository" backend/lib/*/apresentacao/*_controller.dart
+```
+
+---
+
+## 4. Estrutura de diretórios
+
+### 4.1 Módulos do back-end e dependências entre eles
+
+```text
+   nível 4   embarque
+                │  importa ▼
+   nível 3   notificacao
+                │
+   nível 2   rota          autenticacao
+                │               │
+   nível 1   cadastro ◄─────────┘
+                │
+   nível 0   compartilhado
+
+   Um módulo só importa módulos de nível MENOR (nunca do mesmo nível nem de cima).
+```
+
+| Nível | Módulo | Contém | Pode importar |
+|---|---|---|---|
+| 0 | `compartilhado` | Base técnica de todos: conexão, `.env`, CORS, exceções 403/404, `HorarioBrasilia` | **nenhum módulo** |
+| 1 | `cadastro` | Quem participa: `Usuario`, `Motorista`, `Responsavel`, `Aluno`, `Van`, vínculos | `compartilhado` |
+| 2 | `autenticacao` (apoio) | Login simplificado: `Sessao`, repositórios de sessão e usuário, middleware, `UsuarioLogado` | `cadastro`, `compartilhado` |
+| 2 | `rota` | Operação do dia: `Rota`, `PontoParada`, `Presenca`, `Embarque` | `cadastro`, `compartilhado` |
+| 3 | `notificacao` | UC-I02 e avisos: `Notificacao`, `NotificacaoService`, `AvisosService` | `rota`, `autenticacao`, `cadastro`, `compartilhado` |
+| 4 | `embarque` | UC-S05: `EmbarqueService`, `EmbarqueController` | todos os outros |
+
+Como os imports só descem de nível, **não há dependência circular**. Duas escolhas garantem isso:
+
+1. **`Presenca` e `Embarque` ficam em `rota/`, e não em `embarque/`.** O `NotificacaoService`
+   recebe a `Presenca` (`notificarMovimentacao(presenca, tipo)`) e o `EmbarqueService` chama o
+   `NotificacaoService`. Se a `Presenca` estivesse em `embarque/`, teríamos
+   `embarque → notificacao → embarque`.
+2. **O login fica em um módulo próprio, `autenticacao/`.** Hoje (C-02) ele está em
+   `compartilhado/` e importa `Usuario` de `cadastro/`. Quando a A-07 criar
+   `cadastro/infraestrutura/vinculo_repository_postgres.dart`, que usa a `ConexaoBanco` de
+   `compartilhado/`, fecha o ciclo `cadastro ↔ compartilhado`. A mudança está no ponto 15.
+
+### 4.2 Back-end
+
+Legenda: ✓ já está na `desenvolvimento` · `(X-NN)` task que cria · `→` muda de lugar (ponto 15).
+
+```text
+backend/
+├── .env.example                  # DATABASE_URL sem senha; o .env real NÃO vai para o Git ✓
+├── pubspec.yaml                  # dart_frog, postgres, dotenv, uuid; dev: test, mocktail ✓
+├── bin/
+│   └── reset_db.dart             # apaga as tabelas, roda supabase/migrations em ordem e o seed (A-05) ✓
+├── routes/                       # APRESENTAÇÃO HTTP: só lê a requisição e chama o controller
+│   ├── _middleware.dart          # COMPOSIÇÃO: CORS, providers (contrato -> implementação), autenticação ✓
+│   ├── index.dart                # GET /  (servidor no ar) ✓
+│   ├── usuarios.dart             # GET /usuarios  (apoio, C-02) ✓
+│   ├── login.dart                # POST /login  (apoio, C-02) ✓
+│   ├── notificacoes/
+│   │   ├── index.dart            # GET /notificacoes?desde=  (C-05)
+│   │   └── [id]/
+│   │       └── lida.dart         # PATCH /notificacoes/{id}/lida  (C-05)
+│   └── rotas/
+│       ├── hoje.dart             # GET /rotas/hoje  (A-08)
+│       └── [rotaId]/
+│           ├── alunos.dart       # GET /rotas/{rotaId}/alunos  (A-08)
+│           └── embarques/
+│               ├── index.dart        # POST /rotas/{rotaId}/embarques  (B-08)
+│               └── sincronizar.dart  # POST /rotas/{rotaId}/embarques/sincronizar  (B-09)
+├── lib/
+│   ├── compartilhado/            # base técnica; NÃO importa nenhum outro módulo
+│   │   ├── dominio/
+│   │   │   └── horario_brasilia.dart       # HH:MM em UTC-3, mesmo com o servidor em UTC (C-03)
+│   │   ├── aplicacao/
+│   │   │   └── excecoes.dart               # AcessoNegadoException (403), NaoEncontradoException (404) (B-06)
+│   │   ├── apresentacao/
+│   │   │   └── cors.dart                   # CORS + preflight OPTIONS (A-02) ✓
+│   │   └── infraestrutura/
+│   │       ├── ambiente.dart               # lê o DATABASE_URL do .env ✓
+│   │       └── conexao_banco.dart          # ConexaoBanco: pool único e transação (A-01) ✓
+│   ├── cadastro/                 # quem participa do transporte
+│   │   ├── dominio/
+│   │   │   ├── usuario.dart                # Usuario (abstrata) e Papel ✓
+│   │   │   ├── motorista.dart              # Motorista extends Usuario ✓
+│   │   │   ├── responsavel.dart            # Responsavel extends Usuario ✓
+│   │   │   ├── aluno.dart                  # Aluno, ehMenorDeIdade (RN-009) ✓
+│   │   │   ├── van.dart                    # Van ✓
+│   │   │   ├── vinculo_motorista_van.dart  # estaAtivo, autoriza (RN-012) ✓
+│   │   │   └── vinculo_repository.dart     # contrato (A-07)
+│   │   └── infraestrutura/
+│   │       └── vinculo_repository_postgres.dart  # (A-07)
+│   ├── autenticacao/             # APOIO, fora do ciclo de implementação (ponto 15: hoje em compartilhado/)
+│   │   ├── dominio/
+│   │   │   ├── sessao.dart                 # Sessao → de compartilhado/dominio
+│   │   │   ├── sessao_repository.dart      # contrato → de compartilhado/dominio
+│   │   │   └── usuario_repository.dart     # contrato GET /usuarios → de compartilhado/dominio
+│   │   ├── aplicacao/
+│   │   │   └── autenticacao_service.dart   # → de compartilhado/aplicacao
+│   │   ├── apresentacao/
+│   │   │   ├── autenticacao_controller.dart  # → de compartilhado/apresentacao
+│   │   │   ├── autenticacao_middleware.dart  # token -> UsuarioLogado; sem token válido = 401 → de compartilhado/apresentacao
+│   │   │   └── usuario_logado.dart           # → de compartilhado/apresentacao
+│   │   └── infraestrutura/
+│   │       └── sessao_repository_postgres.dart  # → de compartilhado/infraestrutura
+│   ├── rota/                     # a operação do dia
+│   │   ├── dominio/
+│   │   │   ├── rota.dart                   # Rota e Trajeto ✓
+│   │   │   ├── ponto_parada.dart           # ✓
+│   │   │   ├── localizacao.dart            # value object ✓
+│   │   │   ├── presenca.dart               # Presenca, SituacaoPresenca; registrarEmbarque (B-04) ✓
+│   │   │   ├── embarque.dart               # composição de Presenca ✓
+│   │   │   ├── excecoes.dart               # EmbarqueNaoPermitidoException (409), EmbarqueDuplicadoException ✓
+│   │   │   ├── presenca_repository.dart    # contrato (A-07)
+│   │   │   └── rota_repository.dart        # contrato (A-07)
+│   │   └── infraestrutura/
+│   │       ├── presenca_repository_postgres.dart  # situação + embarque em uma transação (A-07)
+│   │       └── rota_repository_postgres.dart      # (A-07)
+│   ├── notificacao/              # UC-I02 e a consulta de avisos
+│   │   ├── dominio/
+│   │   │   ├── notificacao.dart            # Notificacao (deEmbarque, marcarComoLida, pertenceA) e TipoMovimentacao (C-03)
+│   │   │   └── notificacao_repository.dart # contrato (C-03)
+│   │   ├── aplicacao/
+│   │   │   ├── notificacao_service.dart          # contrato do <<include>> (B-05)
+│   │   │   ├── notificacao_service_vazio.dart    # (B-05)
+│   │   │   ├── notificacao_service_padrao.dart   # implementação real (C-04)
+│   │   │   └── avisos_service.dart               # (C-05)
+│   │   ├── apresentacao/
+│   │   │   └── notificacao_controller.dart       # (C-05)
+│   │   └── infraestrutura/
+│   │       └── notificacao_repository_postgres.dart  # (C-03)
+│   └── embarque/                 # o caso de uso UC-S05: só coordenação e entrada HTTP
+│       ├── aplicacao/
+│       │   └── embarque_service.dart       # EmbarqueService e ResultadoRegistro (B-06, B-07; A-08 acrescenta métodos)
+│       └── apresentacao/
+│           └── embarque_controller.dart    # (B-08, B-09; A-08 acrescenta métodos)
+└── test/                         # espelha lib/: test/<módulo>/<camada>/<arquivo>_test.dart
+```
+
+### 4.3 App
+
+```text
+app/
+├── pubspec.yaml                  # http, shared_preferences, connectivity_plus, geolocator, uuid, intl ✓
+├── lib/
+│   ├── main.dart                 # COMPOSIÇÃO: escolhe a implementação de ModuloEmbarque (1 linha) ✓ (D-01)
+│   ├── compartilhado/            # apoio de todos os módulos; NÃO importa nenhum módulo
+│   │   ├── config.dart           # API_URL e USE_MOCK (--dart-define) · infraestrutura ✓
+│   │   ├── api_client.dart       # ApiClient: http + token no header Authorization · infraestrutura ✓
+│   │   ├── sessao.dart           # Papel, UsuarioLogado, Sessao (token) · aplicação ✓
+│   │   ├── cores.dart            # CoresApp: um verde e um âmbar · apresentação ✓
+│   │   └── mock/
+│   │       └── dados_mock.dart   # respostas simuladas no formato da seção 3 do backlog ✓
+│   ├── login/
+│   │   ├── aplicacao/            # (D-03)
+│   │   └── apresentacao/         # tela de login: lista os usuários, um toque entra (D-03)
+│   ├── embarque/                 # UC-R02 e fluxo A1
+│   │   ├── apresentacao/
+│   │   │   ├── tela_rota_do_dia.dart       # TelaRotaDoDia (D-05, D-06)
+│   │   │   └── faixa_sem_conexao.dart      # FaixaSemConexao (D-05; ligada à rede na E-05)
+│   │   ├── aplicacao/
+│   │   │   ├── modulo_embarque.dart        # contrato D–E e tipos, EXATAMENTE como o backlog (D-04)
+│   │   │   ├── modulo_embarque_online.dart # (D-04)
+│   │   │   ├── modulo_embarque_com_fila.dart  # (E-03, E-04)
+│   │   │   └── rota_do_dia_service.dart    # rota de hoje e alunos (D-05)
+│   │   ├── dominio/
+│   │   │   ├── aluno_da_rota.dart          # (D-05)
+│   │   │   ├── rota_do_dia.dart            # (D-05)
+│   │   │   ├── registro_embarque.dart      # um toque: corpo do POST + rotaId (D-04)
+│   │   │   ├── localizacao.dart            # (D-04)
+│   │   │   ├── excecoes.dart               # EnvioRecusadoException, SemConexaoException (D-04)
+│   │   │   ├── embarque_remoto.dart        # contrato (D-04)
+│   │   │   ├── localizador.dart            # contrato (D-04)
+│   │   │   ├── fila_embarques.dart         # contrato (E-01)
+│   │   │   └── conectividade.dart          # contrato (E-02)
+│   │   └── infraestrutura/
+│   │       ├── embarque_api.dart           # EmbarqueRemoto com http, timeout 5 s (D-04)
+│   │       ├── localizador_geolocator.dart # limite de 2 s (D-04)
+│   │       ├── armazenamento_local.dart    # FilaEmbarques em shared_preferences (E-01)
+│   │       └── monitor_conectividade.dart  # connectivity_plus + ValueNotifier<bool> (E-02)
+│   └── avisos/                   # UC-I02 do lado do responsável (C-06, C-07)
+│       ├── apresentacao/         # tela "Avisos"
+│       ├── aplicacao/            # polling a cada ~10 s
+│       ├── dominio/
+│       └── infraestrutura/
+└── test/                         # espelha lib/
+```
+
+Regras entre os módulos do app: `login`, `embarque` e `avisos` importam `compartilhado`; só
+`login/apresentacao` pode importar as telas de `embarque` e `avisos` (para navegar depois do
+login), nunca o contrário. `embarque` e `avisos` não importam um ao outro.
+
+### 4.4 Banco de dados
+
+```text
+supabase/
+├── migrations/                   # rodadas em ordem pelo reset (A-05); numeração = ordem
+│   ├── 001_base.sql              # tabelas do mapa de dados + sessao, RLS em todas (A-03) ✓
+│   └── 002_notificacao.sql       # tabela notificacao, RLS (C-01) ✓
+└── seed.sql                      # dados da seção 6 do backlog, rota sempre em current_date (A-04) ✓
+```
+
+---
+
+## 5. Decisões arquiteturais
+
+| # | Decisão | Alternativas consideradas | Justificativa | Consequência |
+|---|---|---|---|---|
+| 1 | **API REST em Dart com Dart Frog** | App acessar o banco direto; servidor em outra linguagem | A disciplina pede back-end com API REST. As regras de acesso (RN-012, RN-002) ficam no servidor e não podem ser contornadas pelo app. Dart nas duas pontas: a equipe usa uma linguagem só. O Dart Frog cria as rotas pelos nomes dos arquivos, o que deixa o mapa URL → controller visível | `routes/` só delega; toda a lógica fica em `lib/` |
+| 2 | **Supabase usado só como PostgreSQL** | `supabase_flutter`, Supabase Auth, Realtime, Edge Functions | O app não conhece o banco: tudo passa pela API (camadas). RLS ativado sem *policies* bloqueia a API automática do Supabase; o back-end entra como dono do banco. Trocar de provedor é trocar o `DATABASE_URL` | Sem notificação em tempo real nativa (ver decisão 5); cada membro tem um projeto próprio para rodar o seed |
+| 3 | **Repositórios como contrato no domínio e implementação Postgres na infraestrutura** | Services chamando SQL direto | Exigência da disciplina; permite testar services com mocktail sem banco e trocar a versão vazia do `NotificacaoService` pela real | Um arquivo de contrato + um de implementação por repositório |
+| 4 | **Idempotência pelo `registroId` (UUID gerado no aparelho)** | Bloquear por aluno + rota; gerar o id no servidor | Na sincronização offline o mesmo registro pode chegar duas vezes (falha no meio, reenvio). Com o id do aparelho, o servidor reconhece o repetido e devolve 200 sem salvar nem notificar de novo. `unique(registro_id)` no banco protege contra duas requisições simultâneas | O app gera o UUID no toque; o `EmbarqueService` diferencia 201 de 200 (`ResultadoRegistro.jaProcessado`) |
+| 5 | **Notificação por *polling* (~10 s)** | Push com Firebase Cloud Messaging | Configurar FCM/APNs consumiria a sprint (risco da seção 8 do backlog). Gravar a `Notificacao` já é "registrar o evento como comunicado" (UC-I02, passo 4); a tela "Avisos" consulta `GET /notificacoes?desde=` | Aviso chega em até ~10 s; push fica como extra |
+| 6 | **Fila offline no app (`shared_preferences`) + rota de sincronização em lote** | Bloquear o toque sem rede; SQLite; sincronizar um a um | RNF-006: o motorista não pode ficar travado sem sinal. `shared_preferences` funciona no Android e na Web. A `dataHora` do toque vai junto, então o horário salvo é o real. O lote reaproveita o mesmo `EmbarqueService` | `ModuloEmbarqueComFila` decide entre API e fila; sem rede ou timeout vai para a fila, 403/404/409 nunca |
+| 7 | **Diretórios por funcionalidade, com as camadas dentro** | Pastas por camada no topo (`controllers/`, `services/`...) | Cada membro trabalha em um módulo, com menos conflito de merge. A pasta mostra o caso de uso (rastreabilidade), e a dependência entre módulos fica explícita (seção 4.1) | Regra de import entre módulos (sem ciclos), conferida no PR |
+| 8 | **Composição em um único lugar por lado** (`routes/_middleware.dart` e `main.dart`) | Cada classe criar as suas dependências | As trocas planejadas (B-11 e E-05) viram uma linha; os testes injetam versões falsas pelo construtor | Os construtores recebem os contratos |
+| 9 | **Hora em `timestamptz` e ISO 8601 com fuso; HH:MM em horário de Brasília** | Guardar hora local sem fuso | O servidor pode rodar em UTC. A conversão para UTC-3 acontece só na hora de mostrar (`HorarioBrasilia`) | Mensagem com a hora do embarque, mesmo se sincronizado depois |
+| 10 | **Login simplificado como apoio** | Não identificar o usuário; login completo | A disciplina proíbe que o caso de uso implementado seja login, mas RN-012 e RN-002 precisam saber quem faz a requisição. O modelo tem `Usuario` com login e senha; a entrega usa o login pelos usuários do seed | Módulo `autenticacao` isolado, fora da contagem do caso de uso |
+
+---
+
+## 6. Documentação das classes principais
+
+Task B-03 (VT-23).
+
+## 7. Rastreabilidade RN → RF → UC → classes
+
+Task B-03 (VT-23).
+
+---
+
+## 8. Pontos para a equipe decidir
 
 O contrato do módulo de embarque (seção 3 do backlog) **não foi alterado**. O contrato da API
 mudou em um único ponto, decidido na revisão: o novo `GET /rotas/hoje` (pontos 8 e 9). O
@@ -297,8 +612,11 @@ do Membro B e seguem para a revisão da equipe no fim do Dia 1.
 | 12 | **`AvisosService` separado do `NotificacaoService`.** O contrato `NotificacaoService` fica só com `notificarMovimentacao` (o que o `EmbarqueService` precisa); a consulta de avisos da tela fica em outro service, e a versão vazia não precisa implementar consultas | Duas classes de aplicação no módulo notificacao | Membro C |
 | 13 | **Contratos do app** (`EmbarqueRemoto`, `FilaEmbarques`, `Conectividade`, `Localizador`) e `RotaDoDiaService`, `AlunoDaRota`, `RegistroEmbarque`: nomes propostos aqui para aplicar no app a mesma regra do servidor (aplicação depende de contrato, infraestrutura implementa). `RegistroEmbarque` guarda a localização e o `rotaId`, que o `RegistroPendente` do contrato não tem | Como no Diagrama 3, sem mudar o `ModuloEmbarque` | Membros D e E |
 | 14 | **`TipoMovimentacao.DESEMBARQUE`** já existe no enum para o bônus UC-S06 (seção 9 do backlog); nesta entrega só EMBARQUE é usado | Enum com os dois valores | Equipe |
+| 15 | **Ciclo `cadastro ↔ compartilhado` (B-02).** O login da C-02 ficou em `compartilhado/` e importa `Usuario`, `Motorista` e `Responsavel` de `cadastro/`. A A-07 vai criar `cadastro/infraestrutura/vinculo_repository_postgres.dart`, que importa a `ConexaoBanco` de `compartilhado/`, e aí os dois módulos passam a depender um do outro | Mover os 8 arquivos do login para o módulo `lib/autenticacao/` (árvore da seção 4.2) e corrigir os imports em `routes/_middleware.dart`, `routes/login.dart`, `routes/usuarios.dart` e nos testes. Sem mudança de comportamento. **Abrir Bug no Jira** | Membro C (dono da C-02); fazer antes ou junto do merge da A-07 |
+| 16 | **Bibliotecas do app (B-02).** O `app/pubspec.yaml` tem `material_ui`, que não está na lista combinada, e ainda não tem o `mocktail` nos `dev_dependencies` | Tirar o `material_ui` se não for usado (ou a equipe aprovar); acrescentar o `mocktail` quando o primeiro teste precisar | Membro D |
+| 17 | **Classes do código que não estão no diagrama (B-02).** A C-02 criou `UsuarioRepository` (lista o `GET /usuarios`), `AutenticacaoService` e `AutenticacaoController`; a tela "Avisos" ainda não tem classes no Diagrama 3 | Ficam na árvore da seção 4.2. Entram no diagrama na B-12, com os nomes reais | Membro B (B-12); Membro C informa as classes da tela "Avisos" |
 
-### 3.1 Texto proposto para a seção 3 do backlog (pontos 8 e 9)
+### 8.1 Texto proposto para a seção 3 do backlog (pontos 8 e 9)
 
 ```text
 GET /rotas/hoje
