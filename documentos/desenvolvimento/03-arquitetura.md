@@ -18,7 +18,7 @@ REGRAS DE NEGÓCIO -> REQUISITOS -> CASO DE USO -> DIAGRAMA DE SEQUÊNCIA
 | Seção 3 — Arquitetura em camadas | **B-02 (VT-22)** |
 | Seção 4 — Estrutura de diretórios | **B-02 (VT-22)** |
 | Seção 5 — Decisões arquiteturais | **B-02 (VT-22)** |
-| Seções 6 e 7 — Documentação das classes principais e rastreabilidade até as classes | B-03 (VT-23) |
+| Seções 6 e 7 — Documentação das classes principais e rastreabilidade até as classes | **B-03 (VT-23)** |
 | Seção 8 — Pontos para a equipe decidir | atualizada a cada task |
 
 ---
@@ -581,11 +581,90 @@ supabase/
 
 ## 6. Documentação das classes principais
 
-Task B-03 (VT-23).
+As quatro classes que concentram o caso de uso, uma de cada papel: a entidade que guarda a
+regra, o service que coordena o UC-S05, o contrato do `<<include>>` e o contrato do app que
+separa a tela do envio.
+
+| Classe | Camada / pasta | Responsabilidade | Operações | Dependências | RN | RF / RNF | UC |
+|---|---|---|---|---|---|---|---|
+| **`Presenca`** | domínio · `backend/lib/rota/dominio/presenca.dart` | Guardar a situação do aluno na rota (ordem, ponto de parada) e **registrar o próprio embarque**, validando o status. A situação e o embarque são privados: só a própria entidade os altera | `estaConfirmada()`; `registrarEmbarque(registroId, dataHora, localizacao?) : Embarque` (CONFIRMADO → EMBARCADO; senão `EmbarqueNaoPermitidoException`, 409) | `Aluno`, `PontoParada` (associação); `Embarque` (composição 0..1); `SituacaoPresenca`; `Localizacao` | RN-010 (só embarca quem está presente; ausente não tem embarque) | RF-009 | UC-S05 passos 3 e 4; UC-R02 passo 4 |
+| **`EmbarqueService`** | aplicação · `backend/lib/embarque/aplicacao/embarque_service.dart` | **Coordenar o UC-S05** no servidor, na ordem do diagrama de sequência: rota existe, motorista ativo, idempotência, chamar a `Presenca`, salvar em uma transação e acionar o UC-I02. Também atende a listagem dos alunos e a rota de hoje | `registrarEmbarque(rotaId, alunoId, registroId, dataHora, localizacao?, motoristaId) : ResultadoRegistro`; `listarAlunosConfirmados(rotaId, motoristaId)`; `buscarRotaDoDia(motoristaId)`; `validarMotoristaAtivo(rota, motoristaId)` (privada) | contratos `RotaRepository`, `PresencaRepository`, `VinculoRepository`, `NotificacaoService` (injetados); exceções `AcessoNegadoException` (403), `NaoEncontradoException` (404) | RN-012 (só o motorista ativo da van); RN-010 (delegada à `Presenca`) | RF-009; RNF-006 (idempotência pelo `registroId`, lote) | UC-S05 passos 1 a 5 e A1 (lado do servidor) |
+| **`NotificacaoService`** (contrato) | aplicação · `backend/lib/notificacao/aplicacao/notificacao_service.dart` | Ponto do `<<include>>`: o `EmbarqueService` avisa que houve uma movimentação, sem saber como o aviso é montado nem a quem vai. Implementações: `NotificacaoServiceVazio` (B-05) e `NotificacaoServicePadrao` (C-04), que busca os responsáveis, cria uma `Notificacao` por responsável e registra o comunicado | `notificarMovimentacao(presenca, tipo) : Future<void>` | `Presenca`, `TipoMovimentacao`; a implementação real usa `VinculoRepository`, `NotificacaoRepository` e a fábrica `Notificacao.deEmbarque` | RN-002 (só os responsáveis do aluno); RN-009 (menor tem responsável; maior pode não ter → A1) | RF-011 | UC-S05 passo 5; UC-I02 passos 1 a 4 e A1 |
+| **`ModuloEmbarque`** (contrato D–E) | aplicação · `app/lib/embarque/aplicacao/modulo_embarque.dart` | Separar a tela do envio: a `TelaRotaDoDia` só pede "registre o embarque deste aluno" e recebe `enviado` ou `pendente`. Captura hora e localização no toque (GPS até 2 s) e gera o `registroId`. Implementações: `ModuloEmbarqueOnline` (D-04) e `ModuloEmbarqueComFila` (E-03, E-04) | `registrarEmbarque(rotaId, alunoId) : ResultadoEmbarque`; `listarPendentes(rotaId)`; `aoMudarPendentes : Stream<EventoPendente>` | tipos `StatusEnvio`, `ResultadoEmbarque`, `RegistroPendente`, `EventoPendente`, `EmbarqueException`; as implementações usam `EmbarqueRemoto`, `Localizador`, `FilaEmbarques`, `Conectividade` | RN-010 (o registro é a confirmação do motorista) | RF-009; RNF-005 (uma ação, sem esperar o GPS); RNF-006 (fila e sincronização) | UC-R02 passos 3 a 5 e E1; UC-S05 passo 2 e A1 (lado do app) |
+
+Outras classes que também carregam regra (detalhes na seção 1.3):
+
+| Classe | Regra que garante | RN / RF | UC |
+|---|---|---|---|
+| `VinculoMotoristaVan` | `estaAtivo()` e `autoriza(motoristaId)`: só o motorista do vínculo sem data de fim | RN-012 | UC-S05 (pré-condição) |
+| `Notificacao` | `deEmbarque(...)` monta "&lt;aluno&gt; embarcou na van às HH:MM." com a hora do embarque em UTC-3; `pertenceA(responsavelId)` | RN-002; RF-011 | UC-I02 passo 2 |
+| `ModuloEmbarqueComFila` | Sem rede ou timeout vai para a fila; 403/404/409 nunca vão; sincroniza ao reconectar, a cada 30 s e ao abrir o app | RNF-006; RF-009 | UC-S05 A1; UC-R02 E1 |
+| `TelaRotaDoDia` | Um toque registra, sem diálogo; botão "Embarcou" de largura total e ≥ 56 de altura; status com cor + ícone + texto | RNF-005; RNF-004 | UC-R02 passos 1 a 5 |
+| `AvisosService` | Só lista e só marca como lidos os avisos do responsável logado | RN-002; RF-011 | UC-I02 (consulta do aviso) |
+
+### 6.1 Comentário de documentação no código
+
+Cada classe principal leva no `///` a responsabilidade e as RN, RF e UC desta tabela, e cada
+trecho que implementa uma regra cita a regra em um comentário curto. Modelo (como já está em
+`presenca.dart`):
+
+```dart
+/// `Presenca` — rota :: domínio (participante "Presenca" do diagrama de
+/// sequência UC-S05).
+///
+/// Responsabilidade: guardar a situação do aluno na rota e **registrar o
+/// próprio embarque**, validando o status (RN-010).
+/// UC-S05 passos 3 e 4; RF-009.
+class Presenca {
+  Embarque registrarEmbarque(String registroId, DateTime dataHora, [Localizacao? localizacao]) {
+    // RN-010: só embarca quem está CONFIRMADO.
+    ...
+  }
+}
+```
 
 ## 7. Rastreabilidade RN → RF → UC → classes
 
-Task B-03 (VT-23).
+Continua a cadeia do 1º bimestre (RN → RF → UC → sequência, em `documentos/atividade-02/04-rastreabilidade.md`
+e `documentos/atividade-04/` do repositório do 1º bimestre) até as classes e operações deste projeto.
+
+### 7.1 Cadeia de cada regra e requisito
+
+| Item | Requisito | Caso de uso e passo | Mensagem na sequência | Classes e operações | Teste que comprova |
+|---|---|---|---|---|---|
+| **RN-010** Embarque só de quem está presente; ausente não tem embarque | RF-009 | UC-S05 passo 1 (ausente não aparece) | `buscarConfirmados(rotaId)` | `PresencaRepository.buscarConfirmados` (só CONFIRMADO e EMBARCADO, na ordem); `EmbarqueService.listarAlunosConfirmados` | Aceitação 1 (Bruno não aparece); teste da A-08 |
+| | RF-009 | UC-S05 passos 3 e 4; UC-R02 passo 4 | `registrarEmbarque(dataHora, local)` em `Presenca` | **`Presenca.registrarEmbarque`** (CONFIRMADO → EMBARCADO); `EmbarqueNaoPermitidoException` → 409 no `EmbarqueController` | Testes da B-04 (CONFIRMADO embarca; AUSENTE e EMBARCADO lançam); aceitação 6 (409) |
+| **RN-012** Um motorista ativo por van; só ele registra | RF-009 (aplicada aqui; ver ponto 18) · RF-014 no 1º bimestre | UC-S05, pré-condição (rota ativa da van do motorista) | — (não aparece na sequência; ver ponto 18) | `VinculoMotoristaVan.estaAtivo`, `VinculoMotoristaVan.autoriza`; `VinculoRepository.buscarVinculoAtivo`; `EmbarqueService.validarMotoristaAtivo` → `AcessoNegadoException` (403); banco: um vínculo ativo por van (A-03) | Teste da A-06 (`estaAtivo`); testes da A-08 e da B-10 (403); aceitação 7 |
+| **RN-002** Responsável só vê os alunos sob sua responsabilidade | RF-011 | UC-I02 passos 1 e 3 | `buscarResponsaveis(aluno)` | `VinculoRepository.buscarResponsaveis`; `NotificacaoServicePadrao.notificarMovimentacao` (notifica só esses); `Notificacao.pertenceA`; `AvisosService.listarDoResponsavel` e `marcarComoLida` | Teste da C-05 (outra família não vê nem marca); aceitação 4 |
+| **RN-009** Menor tem ao menos um responsável; maior pode não ter | RF-011 | UC-I02 passo 1 e A1 (aluno maior sem responsável) | `buscarResponsaveis(aluno)`; "nenhuma notificação é enviada" | `Aluno.ehMenorDeIdade`; `VinculoRepository.buscarResponsaveis` (lista vazia); `NotificacaoServicePadrao` (A1: não cria nada e retorna) | Testes da C-04 (Ana → 2, Carlos → 0); aceitação 5 |
+| **RF-009** Registrar embarque com data, horário e localização | — | UC-S05 passos 2 a 4; UC-R02 passos 3 e 4 | `confirmarEmbarque(alunoId)`, `registrarEmbarque(...)`, `salvar(presenca)` | `TelaRotaDoDia.confirmarEmbarque` → `ModuloEmbarque.registrarEmbarque` → `POST /rotas/{rotaId}/embarques` → `EmbarqueController.registrarEmbarque` → **`EmbarqueService.registrarEmbarque`** → `Presenca.registrarEmbarque` → `PresencaRepository.salvar`; `Embarque` (dataHora do toque, localização opcional) | Testes da B-10 (dataHora salva é a enviada); aceitação 2 |
+| **RF-011** Notificar o responsável sobre o embarque | — | UC-S05 passo 5 → UC-I02 passos 1 a 4 | `notificarMovimentacao(presenca, tipo)`, `montarMensagem`, `registrarComunicado(evento)` | **`NotificacaoService.notificarMovimentacao`** (`NotificacaoServicePadrao`); `Notificacao.deEmbarque`; `NotificacaoRepository.registrarComunicado`; `GET /notificacoes` → `NotificacaoController` → `AvisosService`; tela "Avisos" (polling ~10 s) | Testes da C-03 (hora em UTC-3) e da C-04; aceitação 3 |
+| **RNF-005** Ações do motorista com uma única ação principal | RF-009 | UC-R02 passo 3 (toque no botão "Embarcou") | `confirmarEmbarque(alunoId)` | `TelaRotaDoDia` (um toque, sem diálogo, botão ≥ 56); `ModuloEmbarque.registrarEmbarque` (uma chamada); `Localizador.obterLocalizacao(2 s)` (o toque nunca espera o GPS) | Testes da D-08; aceitação 2 |
+| **RNF-006** Check-ins offline sincronizados em até 5 min | RF-009 | UC-S05 A1; UC-R02 E1 | `guardar(registroEmbarque)`, `sincronizar(registros)` | **`ModuloEmbarqueComFila`** (`registrarEmbarque`, `sincronizar`); `FilaEmbarques` / `ArmazenamentoLocal`; `Conectividade` / `MonitorConectividade`; `EmbarqueRemoto.sincronizar` → `EmbarqueController.sincronizar` → `EmbarqueService.registrarEmbarque`; idempotência: `Embarque.registroId`, `PresencaRepository.buscarPorRegistroId`, `EmbarqueDuplicadoException`, `ResultadoRegistro.jaProcessado` | Testes da E-06 e da B-10 (mesmo `registroId` → 1 embarque, 1 notificação); aceitação 8, 9 e 10 |
+
+### 7.2 Visão inversa: de cada classe para o que ela atende
+
+| Classe | RN | RF / RNF | UC |
+|---|---|---|---|
+| `Presenca` | RN-010 | RF-009 | UC-S05, UC-R02 |
+| `Embarque` | RN-010 | RF-009, RNF-006 | UC-S05 |
+| `VinculoMotoristaVan` | RN-012 | RF-009 | UC-S05 |
+| `Aluno` | RN-009 | RF-011 | UC-I02 |
+| `Notificacao` | RN-002 | RF-011 | UC-I02 |
+| `PresencaRepository` | RN-010 | RF-009, RNF-006 | UC-S05 |
+| `VinculoRepository` | RN-002, RN-009, RN-012 | RF-009, RF-011 | UC-S05, UC-I02 |
+| `RotaRepository` | RN-012 | RF-009 | UC-S05 |
+| `NotificacaoRepository` | RN-002 | RF-011 | UC-I02 |
+| `EmbarqueService` | RN-010, RN-012 | RF-009, RNF-006 | UC-S05 |
+| `NotificacaoService` / `NotificacaoServicePadrao` | RN-002, RN-009 | RF-011 | UC-I02 |
+| `AvisosService` | RN-002 | RF-011 | UC-I02 |
+| `EmbarqueController` | — (só converte) | RF-009, RNF-006 | UC-S05 |
+| `TelaRotaDoDia` | RN-010 | RF-009, RNF-004, RNF-005 | UC-R02 |
+| `ModuloEmbarque` / `ModuloEmbarqueOnline` | RN-010 | RF-009, RNF-005 | UC-R02, UC-S05 |
+| `ModuloEmbarqueComFila`, `FilaEmbarques`, `ArmazenamentoLocal`, `Conectividade` | — | RNF-006 | UC-S05 A1, UC-R02 E1 |
+
+A coluna "Teste que comprova" fecha a cadeia até a execução. Os números de aceitação são
+os da seção 7 do backlog.
 
 ---
 
@@ -612,9 +691,10 @@ do Membro B e seguem para a revisão da equipe no fim do Dia 1.
 | 12 | **`AvisosService` separado do `NotificacaoService`.** O contrato `NotificacaoService` fica só com `notificarMovimentacao` (o que o `EmbarqueService` precisa); a consulta de avisos da tela fica em outro service, e a versão vazia não precisa implementar consultas | Duas classes de aplicação no módulo notificacao | Membro C |
 | 13 | **Contratos do app** (`EmbarqueRemoto`, `FilaEmbarques`, `Conectividade`, `Localizador`) e `RotaDoDiaService`, `AlunoDaRota`, `RegistroEmbarque`: nomes propostos aqui para aplicar no app a mesma regra do servidor (aplicação depende de contrato, infraestrutura implementa). `RegistroEmbarque` guarda a localização e o `rotaId`, que o `RegistroPendente` do contrato não tem | Como no Diagrama 3, sem mudar o `ModuloEmbarque` | Membros D e E |
 | 14 | **`TipoMovimentacao.DESEMBARQUE`** já existe no enum para o bônus UC-S06 (seção 9 do backlog); nesta entrega só EMBARQUE é usado | Enum com os dois valores | Equipe |
-| 15 | **Ciclo `cadastro ↔ compartilhado` (B-02).** O login da C-02 ficou em `compartilhado/` e importa `Usuario`, `Motorista` e `Responsavel` de `cadastro/`. A A-07 vai criar `cadastro/infraestrutura/vinculo_repository_postgres.dart`, que importa a `ConexaoBanco` de `compartilhado/`, e aí os dois módulos passam a depender um do outro | Mover os 8 arquivos do login para o módulo `lib/autenticacao/` (árvore da seção 4.2) e corrigir os imports em `routes/_middleware.dart`, `routes/login.dart`, `routes/usuarios.dart` e nos testes. Sem mudança de comportamento. **Abrir Bug no Jira** | Membro C (dono da C-02); fazer antes ou junto do merge da A-07 |
+| 15 | **Ciclo `cadastro ↔ compartilhado` (B-02).** O login da C-02 ficou em `compartilhado/` e importa `Usuario`, `Motorista` e `Responsavel` de `cadastro/`. A A-07 (PR #17, já mergeada) criou `cadastro/infraestrutura/vinculo_repository_postgres.dart`, que importa a `ConexaoBanco` de `compartilhado/`: **o ciclo já existe na `desenvolvimento`** | Mover os 8 arquivos do login para o módulo `lib/autenticacao/` (árvore da seção 4.2) e corrigir os imports em `routes/_middleware.dart`, `routes/login.dart`, `routes/usuarios.dart` e nos testes. Sem mudança de comportamento. **Abrir Bug no Jira** | Membro C (dono da C-02); fazer o quanto antes, antes de mais código importar o login de `compartilhado/` |
 | 16 | **Bibliotecas do app (B-02).** O `app/pubspec.yaml` tem `material_ui`, que não está na lista combinada, e ainda não tem o `mocktail` nos `dev_dependencies` | Tirar o `material_ui` se não for usado (ou a equipe aprovar); acrescentar o `mocktail` quando o primeiro teste precisar | Membro D |
 | 17 | **Classes do código que não estão no diagrama (B-02).** A C-02 criou `UsuarioRepository` (lista o `GET /usuarios`), `AutenticacaoService` e `AutenticacaoController`; a tela "Avisos" ainda não tem classes no Diagrama 3 | Ficam na árvore da seção 4.2. Entram no diagrama na B-12, com os nomes reais | Membro B (B-12); Membro C informa as classes da tela "Avisos" |
+| 18 | **RN-012 fora da cadeia do UC-S05 no 1º bimestre (B-03).** Em `atividade-02/04-rastreabilidade.md` a RN-012 só aponta para RF-002, RF-007, RF-012 e RF-014. O UC-S05 cita só a RN-010, e a sequência `UC-S05.puml` não mostra a validação do motorista. Mas o UC-S05 depende dela: só o motorista ativo da van registra (403) | Aqui a cadeia foi completada (seção 7.1). Atualizar a rastreabilidade, as regras do UC-S05 (RN-010, **RN-012**) e incluir `validarMotoristaAtivo` na sequência ("melhorias em todo o projeto") | Membro E (E-07) |
 
 ### 8.1 Texto proposto para a seção 3 do backlog (pontos 8 e 9)
 
