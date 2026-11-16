@@ -6,6 +6,12 @@ import 'package:vantrack_backend/compartilhado/apresentacao/cors.dart';
 import 'package:vantrack_backend/compartilhado/infraestrutura/ambiente.dart';
 import 'package:vantrack_backend/compartilhado/infraestrutura/conexao_banco.dart';
 import 'package:vantrack_backend/compartilhado/infraestrutura/sessao_repository_postgres.dart';
+import 'package:vantrack_backend/cadastro/infraestrutura/vinculo_repository_postgres.dart';
+import 'package:vantrack_backend/embarque/aplicacao/embarque_service.dart';
+import 'package:vantrack_backend/embarque/apresentacao/embarque_controller.dart';
+import 'package:vantrack_backend/notificacao/aplicacao/notificacao_service_vazio.dart';
+import 'package:vantrack_backend/rota/infraestrutura/presenca_repository_postgres.dart';
+import 'package:vantrack_backend/rota/infraestrutura/rota_repository_postgres.dart';
 
 /// Middleware raiz, aplicado a TODAS as rotas.
 ///
@@ -18,8 +24,23 @@ Handler middleware(Handler handler) {
   final controller = AutenticacaoController(
     AutenticacaoService(repositorio, repositorio),
   );
+
+  // UC-S05 (B-08): composição do EmbarqueService com as implementações
+  // Postgres. O pool de conexões é único (ConexaoBanco.abrir).
+  // B-11 troca o NotificacaoServiceVazio pelo NotificacaoServicePadrao (C-04).
+  Future<ConexaoBanco> conexao() => ConexaoBanco.abrir(lerDatabaseUrl());
+  final embarqueController = EmbarqueController(
+    EmbarqueService(
+      rotaRepository: RotaRepositoryPostgres(conexao),
+      presencaRepository: PresencaRepositoryPostgres(conexao),
+      vinculoRepository: VinculoRepositoryPostgres(conexao),
+      notificacaoService: const NotificacaoServiceVazio(),
+    ),
+  );
+
   final autenticado = handler
       .use(provider<AutenticacaoController>((_) => controller))
+      .use(provider<EmbarqueController>((_) => embarqueController))
       .use(AutenticacaoMiddleware(repositorio).middleware());
   Future<Response> atender(RequestContext context) async {
     try {
