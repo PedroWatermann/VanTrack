@@ -2,6 +2,7 @@ import '../../cadastro/dominio/vinculo_repository.dart';
 import '../../compartilhado/aplicacao/excecoes.dart';
 import '../../notificacao/aplicacao/notificacao_service.dart';
 import '../../notificacao/dominio/notificacao.dart';
+import '../../rota/dominio/excecoes.dart';
 import '../../rota/dominio/localizacao.dart';
 import '../../rota/dominio/presenca.dart';
 import '../../rota/dominio/presenca_repository.dart';
@@ -63,13 +64,19 @@ class EmbarqueService {
   /// embarque feito offline guarda o horário real (RNF-006). [localizacao] é
   /// opcional ("quando disponível", RF-009).
   ///
+  /// Idempotência (RNF-006): se o [registroId] já foi processado, devolve o
+  /// mesmo resultado com `jaProcessado: true` (200), sem salvar nem notificar
+  /// de novo. Vale também para duas requisições simultâneas com o mesmo
+  /// registro: a unicidade do banco recusa a segunda.
+  ///
   /// Lança:
   /// - [NaoEncontradoException] (404): a rota não existe ou o aluno não tem
   ///   presença nela;
   /// - [AcessoNegadoException] (403): [motoristaId] não é o motorista ativo da
   ///   van da rota (RN-012);
-  /// - `EmbarqueNaoPermitidoException` (409): a presença não está CONFIRMADO
-  ///   (RN-010), lançada pela própria `Presenca`.
+  /// - [EmbarqueNaoPermitidoException] (409): a presença não está CONFIRMADO
+  ///   (RN-010), lançada pela própria `Presenca`, ou o aluno já embarcou com
+  ///   outro `registroId`.
   Future<ResultadoRegistro> registrarEmbarque({
     required int rotaId,
     required int alunoId,
@@ -85,6 +92,14 @@ class EmbarqueService {
 
     await _validarMotoristaAtivo(rota, motoristaId);
 
+    // RNF-006: registroId já processado -> mesmo resultado (200), sem salvar
+    // nem notificar de novo (reenvio da sincronização offline).
+    final jaProcessada =
+        await _presencaRepository.buscarPorRegistroId(registroId);
+    if (jaProcessada != null) {
+      return _jaProcessado(alunoId, jaProcessada);
+    }
+
     final presenca = await _presencaRepository.buscarPresenca(alunoId, rotaId);
     if (presenca == null) {
       throw const NaoEncontradoException('Aluno não encontrado nesta rota.');
@@ -95,7 +110,18 @@ class EmbarqueService {
     presenca.registrarEmbarque(registroId, dataHora, localizacao);
 
     // Situação e embarque gravados na mesma transação.
-    await _presencaRepository.salvar(presenca);
+    try {
+      await _presencaRepository.salvar(presenca);
+    } on EmbarqueDuplicadoException {
+      // Corrida entre requisições: o banco recusou por unicidade. Se foi o
+      // MESMO registro, quem salvou primeiro já notificou -> 200. Senão, outro
+      // registroId já embarcou o aluno -> 409 (RN-010).
+      final mesma = await _presencaRepository.buscarPorRegistroId(registroId);
+      if (mesma != null) {
+        return _jaProcessado(alunoId, mesma);
+      }
+      throw const EmbarqueNaoPermitidoException(SituacaoPresenca.embarcado);
+    }
 
     // <<include>> UC-I02, só depois de salvar (UC-S05 passo 5).
     await _notificacaoService.notificarMovimentacao(
@@ -105,6 +131,14 @@ class EmbarqueService {
 
     return ResultadoRegistro(alunoId: alunoId, situacao: presenca.situacao);
   }
+
+  /// Resultado de um `registroId` que já tinha sido processado (200).
+  ResultadoRegistro _jaProcessado(int alunoId, Presenca presenca) =>
+      ResultadoRegistro(
+        alunoId: alunoId,
+        situacao: presenca.situacao,
+        jaProcessado: true,
+      );
 
   /// RN-012: só o motorista do vínculo ativo da van da [rota] pode operar a
   /// rota. Senão lança [AcessoNegadoException] (403).

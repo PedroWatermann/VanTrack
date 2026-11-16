@@ -97,6 +97,8 @@ void main() {
     when(() => rotas.buscarPorId(rotaId)).thenAnswer((_) async => rota);
     when(() => vinculos.buscarVinculoAtivo(vanId))
         .thenAnswer((_) async => vinculoAtivo);
+    when(() => presencas.buscarPorRegistroId(any()))
+        .thenAnswer((_) async => null);
     when(() => presencas.salvar(any())).thenAnswer((_) async {});
     when(() => notificacoes.notificarMovimentacao(any(), any()))
         .thenAnswer((_) async {});
@@ -254,6 +256,84 @@ void main() {
         throwsA(isA<EmbarqueNaoPermitidoException>()),
       );
       nadaFoiSalvoNemNotificado();
+    });
+  });
+
+  group('idempotência pelo registroId (B-07, RNF-006)', () {
+    test('mesmo registroId duas vezes: um embarque e uma notificação',
+        () async {
+      final p = presenca(SituacaoPresenca.confirmado);
+      Presenca? processada;
+      when(() => presencas.buscarPresenca(alunoId, rotaId))
+          .thenAnswer((_) async => p);
+      when(() => presencas.buscarPorRegistroId(registroId))
+          .thenAnswer((_) async => processada);
+      when(() => presencas.salvar(any())).thenAnswer((invocacao) async {
+        processada = invocacao.positionalArguments.first as Presenca;
+      });
+
+      final primeiro = await registrar();
+      final segundo = await registrar();
+
+      expect(primeiro.jaProcessado, isFalse, reason: '201');
+      expect(segundo.jaProcessado, isTrue, reason: '200');
+      expect(segundo.alunoId, alunoId);
+      expect(segundo.situacao, SituacaoPresenca.embarcado);
+      verify(() => presencas.salvar(any())).called(1);
+      verify(() => notificacoes.notificarMovimentacao(any(), any()))
+          .called(1);
+    });
+
+    test('registro já processado não dispensa o RN-012 (403)', () async {
+      when(() => presencas.buscarPorRegistroId(registroId)).thenAnswer(
+        (_) async => presenca(SituacaoPresenca.embarcado),
+      );
+
+      await expectLater(
+        registrar(motoristaId: outroMotorista),
+        throwsA(isA<AcessoNegadoException>()),
+      );
+      nadaFoiSalvoNemNotificado();
+    });
+
+    test('corrida com o mesmo registroId: 200 sem notificar de novo',
+        () async {
+      final p = presenca(SituacaoPresenca.confirmado);
+      var consultas = 0;
+      when(() => presencas.buscarPresenca(alunoId, rotaId))
+          .thenAnswer((_) async => p);
+      // 1ª consulta: ainda não existe. 2ª (depois da recusa do banco): existe.
+      when(() => presencas.buscarPorRegistroId(registroId)).thenAnswer(
+        (_) async =>
+            ++consultas == 1 ? null : presenca(SituacaoPresenca.embarcado),
+      );
+      when(() => presencas.salvar(any()))
+          .thenThrow(const EmbarqueDuplicadoException(registroId));
+
+      final resultado = await registrar();
+
+      expect(resultado.jaProcessado, isTrue);
+      expect(resultado.situacao, SituacaoPresenca.embarcado);
+      verifyNever(() => notificacoes.notificarMovimentacao(any(), any()));
+    });
+
+    test('corrida com outro registroId: 409 sem notificar', () async {
+      when(() => presencas.buscarPresenca(alunoId, rotaId))
+          .thenAnswer((_) async => presenca(SituacaoPresenca.confirmado));
+      when(() => presencas.salvar(any()))
+          .thenThrow(const EmbarqueDuplicadoException(registroId));
+
+      await expectLater(
+        registrar(),
+        throwsA(
+          isA<EmbarqueNaoPermitidoException>().having(
+            (e) => e.situacaoAtual,
+            'situacaoAtual',
+            SituacaoPresenca.embarcado,
+          ),
+        ),
+      );
+      verifyNever(() => notificacoes.notificarMovimentacao(any(), any()));
     });
   });
 
