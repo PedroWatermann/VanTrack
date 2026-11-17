@@ -163,6 +163,91 @@ class EmbarqueController {
     }
   }
 
+  /// `POST /rotas/{rotaId}/embarques/sincronizar` (task B-09; UC-S05 A1,
+  /// RNF-006).
+  ///
+  /// Corpo: `{ "registros": [ ...mesmo formato do POST /embarques... ] }`.
+  /// Processa os registros um por um, na ordem, com o mesmo
+  /// [EmbarqueService.registrarEmbarque]: **um registro com erro não impede os
+  /// outros**. Responde 200 `{ "resultados": [ { registroId, codigo } ] }`, na
+  /// ordem do envio, com o código que cada registro teria sozinho:
+  /// 201/200 (aceito), 400 (item malformado), 403, 404, 409 ou 503 (erro
+  /// inesperado; o app mantém o registro na fila e tenta de novo).
+  ///
+  /// O lote inteiro responde 405 (método), 403 (não é motorista), 404 (rotaId
+  /// inválido) ou 400 (corpo sem a lista `registros`).
+  Future<Response> sincronizar(
+    String rotaId,
+    Request pedido,
+    UsuarioLogado usuario,
+  ) async {
+    if (pedido.method != HttpMethod.post) {
+      return Response(statusCode: 405, headers: {'Allow': 'POST'});
+    }
+    if (usuario.papel != Papel.motorista) {
+      return _erro(403, 'Você não é o motorista ativo desta van.');
+    }
+    final id = int.tryParse(rotaId);
+    if (id == null || id <= 0) {
+      return _erro(404, 'Rota não encontrada.');
+    }
+
+    final Object? corpo;
+    try {
+      corpo = await pedido.json();
+    } on FormatException {
+      return _loteInvalido();
+    }
+    final registros =
+        corpo is Map<String, dynamic> ? corpo['registros'] : null;
+    if (registros is! List) return _loteInvalido();
+
+    final resultados = <Map<String, Object?>>[];
+    // Em ordem, um de cada vez: o mesmo aluno pode aparecer duas vezes no lote.
+    for (final item in registros) {
+      final registroId =
+          item is Map<String, dynamic> ? item['registroId'] : null;
+      resultados.add({
+        'registroId': registroId,
+        'codigo': await _codigoDoRegistro(id, item, usuario.id),
+      });
+    }
+    return Response.json(body: {'resultados': resultados});
+  }
+
+  /// Registra um item do lote e devolve o código HTTP dele, sem lançar:
+  /// qualquer erro vira o código daquele item (RNF-006).
+  Future<int> _codigoDoRegistro(
+    int rotaId,
+    Object? item,
+    int motoristaId,
+  ) async {
+    final registro = _RegistroRecebido.ler(item);
+    if (registro == null) return 400;
+    try {
+      final resultado = await service.registrarEmbarque(
+        rotaId: rotaId,
+        alunoId: registro.alunoId,
+        registroId: registro.registroId,
+        dataHora: registro.dataHora,
+        localizacao: registro.localizacao,
+        motoristaId: motoristaId,
+      );
+      return resultado.jaProcessado ? 200 : 201;
+    } on Exception catch (erro) {
+      return _codigoHttpDe(erro) ?? 503;
+    } on Object {
+      // Erro inesperado num item não derruba o lote; o app tenta de novo.
+      return 503;
+    }
+  }
+
+  Response _loteInvalido() => _erro(
+        400,
+        'Informe { "registros": [...] }, cada um no formato do envio de '
+        'embarque.',
+      );
+
   /// Exceções da aplicação e do domínio -> código HTTP (seção 3 do backlog).
   /// `null`: erro inesperado, que sobe até o middleware raiz (503).
   int? _codigoHttpDe(Exception erro) => switch (erro) {
