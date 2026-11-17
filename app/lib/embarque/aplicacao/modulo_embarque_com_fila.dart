@@ -16,11 +16,13 @@ import 'modulo_embarque.dart';
 /// modo sem conexão (fluxo alternativo A1 do UC-S05). Captura data/hora e
 /// localização (até 2 s) no momento do toque, envia imediatamente quando há
 /// conexão ou guarda na [FilaEmbarques] quando offline / falha de rede
-/// ([SemConexaoException]), devolvendo [StatusEnvio.pendente]. Erros de regra
-/// ou acesso (403, 404, 409) viram [EmbarqueException] e nunca vão para a fila.
+/// ([SemConexaoException]), devolvendo [StatusEnvio.pendente]. Sincroniza os
+/// pendentes automaticamente ao reconectar, a cada 30 segundos e ao abrir o app,
+/// sem execuções simultâneas, removendo da fila o que o servidor confirmou ou
+/// rejeitou e notificando via [aoMudarPendentes].
 ///
 /// RN-010 (confirmação do embarque pelo motorista); RF-009; RNF-005 (um toque,
-/// GPS com limite de 2 s); RNF-006 (fila offline e sincronização).
+/// GPS com limite de 2 s); RNF-006 (fila offline e sincronização em até 5 min).
 /// UC-S05 passo 2 e fluxo alternativo A1; UC-R02 passos 3 a 5 e E1.
 class ModuloEmbarqueComFila implements ModuloEmbarque {
   ModuloEmbarqueComFila({
@@ -28,7 +30,20 @@ class ModuloEmbarqueComFila implements ModuloEmbarque {
     required this.fila,
     required this.conectividade,
     required this.localizador,
-  });
+    Duration intervaloSincronizacao = const Duration(seconds: 30),
+  }) {
+    _inscricaoConectividade = conectividade.aoMudar.listen((online) {
+      if (online) {
+        sincronizar();
+      }
+    });
+    _timerSincronizacao = Timer.periodic(
+      intervaloSincronizacao,
+      (_) => sincronizar(),
+    );
+    // RNF-006: tenta enviar pendências salvas assim que o app é aberto.
+    Future.microtask(sincronizar);
+  }
 
   final EmbarqueRemoto remoto;
   final FilaEmbarques fila;
@@ -40,7 +55,10 @@ class ModuloEmbarqueComFila implements ModuloEmbarque {
 
   static const Uuid _uuid = Uuid();
 
+  final Set<int> _rotasConhecidas = {1};
+
   bool _sincronizando = false;
+  bool _dispensado = false;
 
   /// Indica se há uma sincronização em andamento.
   bool get sincronizando => _sincronizando;
@@ -48,11 +66,16 @@ class ModuloEmbarqueComFila implements ModuloEmbarque {
   final StreamController<EventoPendente> _eventos =
       StreamController<EventoPendente>.broadcast();
 
+  StreamSubscription<bool>? _inscricaoConectividade;
+  Timer? _timerSincronizacao;
+
   @override
   Stream<EventoPendente> get aoMudarPendentes => _eventos.stream;
 
   @override
   Future<ResultadoEmbarque> registrarEmbarque(int rotaId, int alunoId) async {
+    _rotasConhecidas.add(rotaId);
+
     // Hora e localização capturadas no momento do toque (RF-009, RNF-006).
     final dataHora = DateTime.now();
     final registroId = _uuid.v4();
@@ -105,6 +128,7 @@ class ModuloEmbarqueComFila implements ModuloEmbarque {
 
   @override
   Future<List<RegistroPendente>> listarPendentes(int rotaId) async {
+    _rotasConhecidas.add(rotaId);
     final pendentes = await fila.listar(rotaId);
     return [
       for (final r in pendentes)
@@ -112,19 +136,79 @@ class ModuloEmbarqueComFila implements ModuloEmbarque {
     ];
   }
 
-  /// Sincroniza os registros pendentes com o servidor (detalhado na E-04).
-  Future<void> sincronizar() async {
-    if (_sincronizando) return;
+  /// Sincroniza os registros pendentes com o servidor em lote (RNF-006).
+  ///
+  /// Nunca executa duas sincronizações simultaneamente. Em falha de rede no
+  /// meio do processo, mantém os registros na fila para a próxima tentativa.
+  Future<void> sincronizar([int? rotaId]) async {
+    if (rotaId != null) {
+      _rotasConhecidas.add(rotaId);
+    }
+    if (_sincronizando || _dispensado || !conectividade.estaOnline) return;
+
     _sincronizando = true;
     try {
-      // A lógica de envio em lote, remoção e reconexão automática é expandida na E-04.
+      final rotas = rotaId != null ? [rotaId] : _rotasConhecidas.toList();
+      for (final rota in rotas) {
+        if (_dispensado) break;
+
+        final pendentes = await fila.listar(rota);
+        if (pendentes.isEmpty) continue;
+
+        final Map<String, int> resultados;
+        try {
+          resultados = await remoto.sincronizar(rota, pendentes);
+          conectividade.registrarSucessoDeRede();
+        } on SemConexaoException {
+          conectividade.registrarFalhaDeRede();
+          break;
+        } on EnvioRecusadoException {
+          conectividade.registrarSucessoDeRede();
+          break;
+        }
+
+        final paraRemover = <String>{};
+        final eventosEmitidos = <EventoPendente>[];
+
+        for (final registro in pendentes) {
+          final codigo = resultados[registro.registroId];
+          if (codigo == 200 || codigo == 201) {
+            paraRemover.add(registro.registroId);
+            eventosEmitidos.add(
+              EventoPendente(registro.registroId, registro.alunoId, true),
+            );
+          } else if (codigo != null && codigo >= 400 && codigo < 500) {
+            paraRemover.add(registro.registroId);
+            eventosEmitidos.add(
+              EventoPendente(
+                registro.registroId,
+                registro.alunoId,
+                false,
+                codigo,
+              ),
+            );
+          }
+        }
+
+        if (paraRemover.isNotEmpty) {
+          await fila.remover(paraRemover);
+        }
+        if (!_dispensado && !_eventos.isClosed) {
+          for (final evento in eventosEmitidos) {
+            _eventos.add(evento);
+          }
+        }
+      }
     } finally {
       _sincronizando = false;
     }
   }
 
-  /// Libera o controlador de eventos.
+  /// Cancela o timer e a escuta de conectividade, liberando os recursos.
   Future<void> dispose() async {
+    _dispensado = true;
+    _timerSincronizacao?.cancel();
+    await _inscricaoConectividade?.cancel();
     await _eventos.close();
   }
 }
