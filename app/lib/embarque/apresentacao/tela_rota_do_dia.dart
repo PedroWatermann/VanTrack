@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../compartilhado/cores.dart';
@@ -27,6 +28,7 @@ class TelaRotaDoDia extends StatefulWidget {
     super.key,
     required this.modulo,
     required this.rotaDoDiaService,
+    this.online,
   });
 
   /// Módulo usado para registrar os embarques.
@@ -34,6 +36,9 @@ class TelaRotaDoDia extends StatefulWidget {
 
   /// Serviço que busca a rota de hoje e os alunos.
   final RotaDoDiaService rotaDoDiaService;
+
+  /// Estado da conectividade do aparelho; quando `false`, exibe [FaixaSemConexao] (RNF-003).
+  final ValueListenable<bool>? online;
 
   @override
   State<TelaRotaDoDia> createState() => _TelaRotaDoDiaState();
@@ -153,7 +158,13 @@ class _TelaRotaDoDiaState extends State<TelaRotaDoDia> {
 
     return Column(
       children: [
-        const FaixaSemConexao(semConexao: false),
+        if (widget.online != null)
+          ValueListenableBuilder<bool>(
+            valueListenable: widget.online!,
+            builder: (_, estaOnline, _) => FaixaSemConexao(semConexao: !estaOnline),
+          )
+        else
+          const FaixaSemConexao(semConexao: false),
         _Cabecalho(rota: rota, naVan: naVan.length, total: _alunos.length),
         Expanded(
           child: _alunos.isEmpty
