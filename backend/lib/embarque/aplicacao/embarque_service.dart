@@ -48,15 +48,69 @@ class EmbarqueService {
     required PresencaRepository presencaRepository,
     required VinculoRepository vinculoRepository,
     required NotificacaoService notificacaoService,
+    DateTime Function()? relogio,
   })  : _rotaRepository = rotaRepository,
         _presencaRepository = presencaRepository,
         _vinculoRepository = vinculoRepository,
-        _notificacaoService = notificacaoService;
+        _notificacaoService = notificacaoService,
+        _relogio = relogio ?? DateTime.now;
 
   final RotaRepository _rotaRepository;
   final PresencaRepository _presencaRepository;
   final VinculoRepository _vinculoRepository;
   final NotificacaoService _notificacaoService;
+
+  /// Hora atual; injetável para os testes de "hoje" (task A-08).
+  final DateTime Function() _relogio;
+
+  /// Rota de hoje do motorista, para abrir a "Rota do dia" logo depois do
+  /// login (`GET /rotas/hoje`, pontos 8 e 9 do 03-arquitetura.md; task A-08).
+  ///
+  /// "Hoje" é a data de Brasília (UTC-3): o servidor pode estar em UTC, e depois
+  /// das 21h a data UTC já é a do dia seguinte. A rota é a da van em que o
+  /// motorista tem vínculo ativo (RN-012).
+  ///
+  /// Lança [NaoEncontradoException] (404) se ele não tem rota hoje, o que inclui
+  /// o motorista sem vínculo com van.
+  Future<Rota> buscarRotaDoDia(int motoristaId) async {
+    final hojeEmBrasilia =
+        _relogio().toUtc().subtract(const Duration(hours: 3));
+    final rota =
+        await _rotaRepository.buscarDoMotorista(motoristaId, hojeEmBrasilia);
+    if (rota == null) {
+      throw const NaoEncontradoException('Motorista sem rota hoje.');
+    }
+    return rota;
+  }
+
+  /// UC-S05 passo 1: alunos da rota na ordem das paradas, para a tela
+  /// "Rota do dia" (`GET /rotas/{rotaId}/alunos`; task A-08).
+  ///
+  /// Só presenças CONFIRMADO ou EMBARCADO: aluno AUSENTE não aparece (exceção
+  /// da RN-010).
+  ///
+  /// Lança [NaoEncontradoException] (404) se a rota não existe e
+  /// [AcessoNegadoException] (403) se [motoristaId] não é o motorista ativo da
+  /// van da rota (RN-012).
+  Future<List<Presenca>> listarAlunosConfirmados(
+    int rotaId,
+    int motoristaId,
+  ) async {
+    final rota = await _rotaRepository.buscarPorId(rotaId);
+    if (rota == null) {
+      throw const NaoEncontradoException('Rota não encontrada.');
+    }
+
+    await _validarMotoristaAtivo(rota, motoristaId);
+
+    final presencas = await _presencaRepository.buscarConfirmados(rotaId);
+    // RN-010 (exceção): o repositório já deixa os ausentes de fora no SQL; o
+    // service garante a regra e a ordem da rota mesmo com outra implementação.
+    return [
+      for (final presenca in presencas)
+        if (presenca.situacao != SituacaoPresenca.ausente) presenca,
+    ]..sort((a, b) => a.ordem.compareTo(b.ordem));
+  }
 
   /// Registra o embarque do aluno [alunoId] na rota [rotaId] (UC-S05).
   ///

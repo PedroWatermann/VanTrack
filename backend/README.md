@@ -66,8 +66,14 @@ leem o seu banco do Supabase), rode o reset antes e depois `dart test`.
 
 ### Teste manual com o servidor no ar
 
-Rotas que já existem: `GET /` (verificação), `GET /usuarios` e `POST /login` (públicas). As
-demais exigem o header `Authorization: Bearer <token>`; sem ele, `401`.
+Rotas públicas: `GET /` (verificação), `GET /usuarios` e `POST /login`. As demais exigem o
+header `Authorization: Bearer <token>`; sem ele, `401`:
+
+| Rota | Quem | Respostas |
+|---|---|---|
+| `GET /rotas/hoje` | motorista | 200 `{rotaId, trajeto, horarioPrevisto, placa}`; 403 se não for motorista; 404 sem rota hoje (inclui o motorista sem vínculo) |
+| `GET /rotas/{rotaId}/alunos` | motorista ativo da van | 200 com os alunos na ordem (sem os ausentes); 403 (RN-012); 404 |
+| `POST /rotas/{rotaId}/embarques` | motorista ativo da van | 201, 200 (mesmo `registroId`), 400, 403, 404, 409 |
 
 ```bash
 curl http://localhost:8080/usuarios
@@ -77,8 +83,22 @@ curl http://localhost:8080/usuarios
 curl -X POST http://localhost:8080/login -H "Content-Type: application/json" -d "{\"id\": 1, \"papel\": \"MOTORISTA\"}"
 ```
 
-O login devolve `{"token": "..."}`. No Postman: `POST /login` com o corpo em Body → raw →
-JSON e, nas outras rotas, Authorization → Bearer Token com o token recebido.
+O login devolve `{"token": "..."}`. Com o token do João Pereira (motorista 1):
+
+```bash
+curl http://localhost:8080/rotas/hoje -H "Authorization: Bearer COLE_O_TOKEN"
+```
+
+```bash
+curl http://localhost:8080/rotas/1/alunos -H "Authorization: Bearer COLE_O_TOKEN"
+```
+
+Esperado: a rota 1 e os alunos Ana, Beatriz e Carlos, nessa ordem (Bruno está ausente).
+Com o token do Marcos Oliveira (motorista 2, sem vínculo): `404` no `/rotas/hoje` e `403` no
+`/rotas/1/alunos`.
+
+No Postman: `POST /login` com o corpo em Body → raw → JSON e, nas outras rotas,
+Authorization → Bearer Token com o token recebido.
 
 ## Dados do seed
 

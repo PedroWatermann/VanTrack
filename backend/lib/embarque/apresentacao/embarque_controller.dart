@@ -4,6 +4,7 @@ import 'package:uuid/validation.dart';
 import '../../cadastro/dominio/usuario.dart';
 import '../../compartilhado/aplicacao/excecoes.dart';
 import '../../compartilhado/apresentacao/usuario_logado.dart';
+import '../../compartilhado/dominio/horario_brasilia.dart';
 import '../../rota/dominio/excecoes.dart';
 import '../../rota/dominio/localizacao.dart';
 import '../aplicacao/embarque_service.dart';
@@ -22,6 +23,87 @@ class EmbarqueController {
   const EmbarqueController(this.service);
 
   final EmbarqueService service;
+
+  /// `GET /rotas/hoje` (task A-08; pontos 8 e 9 do 03-arquitetura.md).
+  ///
+  /// Respostas: 200 `{ rotaId, trajeto, horarioPrevisto, placa }`, 403 (não é
+  /// motorista), 404 (motorista sem rota hoje, inclusive o sem vínculo) e 405.
+  Future<Response> buscarRotaDoDia(
+      Request pedido, UsuarioLogado usuario) async {
+    if (pedido.method != HttpMethod.get) {
+      return Response(statusCode: 405, headers: {'Allow': 'GET'});
+    }
+    if (usuario.papel != Papel.motorista) {
+      return _erro(403, 'Só o motorista tem rota do dia.');
+    }
+    return _traduzindoErros(() async {
+      final rota = await service.buscarRotaDoDia(usuario.id);
+      return Response.json(
+        body: {
+          'rotaId': rota.id,
+          'trajeto': rota.trajeto.codigo,
+          'horarioPrevisto': HorarioBrasilia.formatarIso8601(
+            rota.horarioPrevisto,
+          ),
+          'placa': rota.van.placa,
+        },
+      );
+    });
+  }
+
+  /// `GET /rotas/{rotaId}/alunos` (task A-08; UC-S05 passo 1).
+  ///
+  /// Respostas: 200 com a lista da seção 3 do backlog (só CONFIRMADO ou
+  /// EMBARCADO, na ordem da rota; RN-010), 403 (não é o motorista ativo da van,
+  /// RN-012), 404 (rota não existe) e 405.
+  Future<Response> listarAlunos(
+    String rotaId,
+    Request pedido,
+    UsuarioLogado usuario,
+  ) async {
+    if (pedido.method != HttpMethod.get) {
+      return Response(statusCode: 405, headers: {'Allow': 'GET'});
+    }
+    // Só motorista tem motoristaId (ver registrarEmbarque).
+    if (usuario.papel != Papel.motorista) {
+      return _erro(403, 'Você não é o motorista ativo desta van.');
+    }
+    final id = int.tryParse(rotaId);
+    if (id == null || id <= 0) {
+      return _erro(404, 'Rota não encontrada.');
+    }
+    return _traduzindoErros(() async {
+      final presencas = await service.listarAlunosConfirmados(id, usuario.id);
+      return Response.json(
+        body: [
+          for (final presenca in presencas)
+            {
+              'alunoId': presenca.aluno.id,
+              'nome': presenca.aluno.nome,
+              'ordem': presenca.ordem,
+              'pontoParada': {
+                'endereco': presenca.pontoParada.endereco,
+                'latitude': presenca.pontoParada.localizacao.latitude,
+                'longitude': presenca.pontoParada.localizacao.longitude,
+              },
+              'status': presenca.situacao.codigo,
+            },
+        ],
+      );
+    });
+  }
+
+  /// Converte as exceções conhecidas em 403/404/409; as demais sobem até o
+  /// middleware raiz (503).
+  Future<Response> _traduzindoErros(Future<Response> Function() acao) async {
+    try {
+      return await acao();
+    } on Exception catch (erro) {
+      final codigo = _codigoHttpDe(erro);
+      if (codigo == null) rethrow;
+      return _erro(codigo, _mensagemDe(erro));
+    }
+  }
 
   /// `POST /rotas/{rotaId}/embarques` (task B-08).
   ///
