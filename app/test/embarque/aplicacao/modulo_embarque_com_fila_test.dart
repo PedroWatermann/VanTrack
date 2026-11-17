@@ -1,7 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:app/compartilhado/api_client.dart';
+import 'package:app/compartilhado/sessao.dart';
 import 'package:app/embarque/aplicacao/modulo_embarque.dart';
 import 'package:app/embarque/aplicacao/modulo_embarque_com_fila.dart';
 import 'package:app/embarque/dominio/aluno_da_rota.dart';
@@ -13,6 +19,8 @@ import 'package:app/embarque/dominio/localizacao.dart';
 import 'package:app/embarque/dominio/localizador.dart';
 import 'package:app/embarque/dominio/registro_embarque.dart';
 import 'package:app/embarque/dominio/rota_do_dia.dart';
+import 'package:app/embarque/infraestrutura/armazenamento_local.dart';
+import 'package:app/embarque/infraestrutura/embarque_api.dart';
 
 class _LocalizadorFalso implements Localizador {
   _LocalizadorFalso([this.resposta]);
@@ -132,6 +140,8 @@ class _RemotoFalso implements EmbarqueRemoto {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   late _RemotoFalso remoto;
   late _FilaEmMemoria fila;
   late _ConectividadeFalsa conectividade;
@@ -447,4 +457,267 @@ void main() {
     );
     expect(fila.itens, isEmpty);
   });
+
+  group(
+    'Integração offline (MockClient + SharedPreferences + ModuloEmbarqueComFila)',
+    () {
+      late _ConectividadeFalsa connIntegrada;
+
+      setUp(() {
+        SharedPreferences.setMockInitialValues({});
+      });
+
+      ModuloEmbarqueComFila criarIntegrado({
+        required bool online,
+        required MockClient mockClient,
+        Localizacao? localizacao = const Localizacao(-23.4205, -51.9331),
+      }) {
+        final sessao = Sessao()
+          ..entrar(
+            const UsuarioLogado(
+              id: 1,
+              nome: 'Marcos Pereira',
+              papel: Papel.motorista,
+            ),
+            'token-teste',
+          );
+        final api = ApiClient(
+          sessao: sessao,
+          usarMock: false,
+          cliente: mockClient,
+        );
+        final conn = _ConectividadeFalsa(inicialOnline: online);
+        connIntegrada = conn;
+
+        final criado = ModuloEmbarqueComFila(
+          remoto: EmbarqueApi(api),
+          fila: ArmazenamentoLocal(),
+          conectividade: conn,
+          localizador: _LocalizadorFalso(localizacao),
+        );
+        addTearDown(() async {
+          await criado.dispose();
+          await conn.dispose();
+        });
+        return criado;
+      }
+
+      test(
+          'toque online envia POST /rotas/1/embarques via MockClient e deixa SharedPreferences vazio',
+          () async {
+        Map<String, dynamic>? corpoEnviado;
+        String? caminhoChamado;
+
+        final mockClient = MockClient((req) async {
+          caminhoChamado = req.url.path;
+          corpoEnviado = jsonDecode(req.body) as Map<String, dynamic>;
+          return http.Response(
+            jsonEncode({'alunoId': 1, 'status': 'EMBARCADO'}),
+            201,
+          );
+        });
+
+        final m = criarIntegrado(
+          online: true,
+          mockClient: mockClient,
+          localizacao: const Localizacao(-23.4205, -51.9331),
+        );
+
+        final resultado = await m.registrarEmbarque(1, 1);
+
+        expect(resultado.status, StatusEnvio.enviado);
+        expect(caminhoChamado, endsWith('/rotas/1/embarques'));
+        expect(corpoEnviado?['registroId'], resultado.registroId);
+        expect(corpoEnviado?['alunoId'], 1);
+        expect(
+          DateTime.parse(corpoEnviado?['dataHora'] as String)
+              .isAtSameMomentAs(resultado.dataHora),
+          isTrue,
+        );
+        expect(corpoEnviado?['latitude'], -23.4205);
+        expect(corpoEnviado?['longitude'], -51.9331);
+        expect(await ArmazenamentoLocal().listar(1), isEmpty);
+      });
+
+      test(
+          'falha de rede ou timeout no MockClient grava no SharedPreferences e sobrevive ao reabrir o app',
+          () async {
+        var modoErro = 'rede';
+        final mockClient = MockClient((_) async {
+          if (modoErro == 'rede') {
+            throw http.ClientException('Sem internet');
+          }
+          throw TimeoutException('Tempo esgotado');
+        });
+
+        final sessao1 = criarIntegrado(
+          online: true,
+          mockClient: mockClient,
+          localizacao: const Localizacao(-23.4231, -51.9387),
+        );
+
+        final r1 = await sessao1.registrarEmbarque(1, 1);
+        expect(r1.status, StatusEnvio.pendente);
+        expect(connIntegrada.estaOnline, isFalse);
+
+        // Volta a tentar com timeout no MockClient (simulando queda silenciosa).
+        connIntegrada.registrarSucessoDeRede();
+        modoErro = 'timeout';
+        final r2 = await sessao1.registrarEmbarque(1, 2);
+        expect(r2.status, StatusEnvio.pendente);
+        expect(connIntegrada.estaOnline, isFalse);
+
+        // Simula fechar e reabrir o app: nova instância lê do SharedPreferences.
+        final sessao2 = criarIntegrado(
+          online: false,
+          mockClient: mockClient,
+        );
+        final pendentes = await sessao2.listarPendentes(1);
+
+        expect(pendentes.map((p) => p.registroId), [r1.registroId, r2.registroId]);
+        final persistidos = await ArmazenamentoLocal().listar(1);
+        expect(persistidos, hasLength(2));
+        expect(persistidos[0].localizacao?.latitude, -23.4231);
+        expect(persistidos[0].localizacao?.longitude, -51.9387);
+      });
+
+      test(
+          'recusa 403, 404 ou 409 do MockClient lança EmbarqueException e nunca grava no SharedPreferences',
+          () async {
+        for (final codigo in [403, 404, 409]) {
+          SharedPreferences.setMockInitialValues({});
+          final mockClient = MockClient(
+            (_) async => http.Response(
+              jsonEncode({'erro': 'Recusa $codigo'}),
+              codigo,
+            ),
+          );
+          final m = criarIntegrado(online: true, mockClient: mockClient);
+
+          await expectLater(
+            m.registrarEmbarque(1, 1),
+            throwsA(
+              isA<EmbarqueException>()
+                  .having((e) => e.codigoHttp, 'codigoHttp', codigo)
+                  .having((e) => e.mensagem, 'mensagem', 'Recusa $codigo'),
+            ),
+          );
+          expect(await ArmazenamentoLocal().listar(1), isEmpty);
+        }
+      });
+
+      test(
+          'ao reconectar, envia lote no MockClient, remove 201/409 do SharedPreferences e mantém fila em falha parcial',
+          () async {
+        var falharRede = true;
+        final lotesRecebidos = <List<Map<String, dynamic>>>[];
+
+        final mockClient = MockClient((req) async {
+          if (falharRede) {
+            throw http.ClientException('Conexão caiu no meio');
+          }
+          expect(req.url.path, endsWith('/rotas/1/embarques/sincronizar'));
+          final corpo = jsonDecode(req.body) as Map<String, dynamic>;
+          final registros =
+              (corpo['registros'] as List).cast<Map<String, dynamic>>();
+          lotesRecebidos.add(registros);
+
+          return http.Response(
+            jsonEncode({
+              'resultados': [
+                {'registroId': registros[0]['registroId'], 'codigo': 201},
+                {'registroId': registros[1]['registroId'], 'codigo': 409},
+                {'registroId': registros[2]['registroId'], 'codigo': 500},
+              ],
+            }),
+            200,
+          );
+        });
+
+        final m = criarIntegrado(online: false, mockClient: mockClient);
+        final eventos = <EventoPendente>[];
+        final inscricao = m.aoMudarPendentes.listen(eventos.add);
+        addTearDown(inscricao.cancel);
+
+        final r1 = await m.registrarEmbarque(1, 1);
+        final r2 = await m.registrarEmbarque(1, 2);
+        final r3 = await m.registrarEmbarque(1, 3);
+
+        // Falha no meio ao reconectar: não perde ninguém do SharedPreferences.
+        connIntegrada.simularMudanca(true);
+        await pumpEventQueue();
+        expect(connIntegrada.estaOnline, isFalse);
+        expect(
+          (await ArmazenamentoLocal().listar(1)).map((r) => r.registroId),
+          [r1.registroId, r2.registroId, r3.registroId],
+        );
+
+        // Agora o servidor responde: remove 201 e 409, mantém 500 na fila.
+        falharRede = false;
+        connIntegrada.simularMudanca(true);
+        await pumpEventQueue();
+
+        expect(lotesRecebidos, hasLength(1));
+        expect(lotesRecebidos.first, hasLength(3));
+        expect(
+          (await ArmazenamentoLocal().listar(1)).map((r) => r.registroId),
+          [r3.registroId],
+        );
+        expect(eventos, hasLength(2));
+        expect(eventos[0].registroId, r1.registroId);
+        expect(eventos[0].sincronizado, isTrue);
+        expect(eventos[1].registroId, r2.registroId);
+        expect(eventos[1].sincronizado, isFalse);
+        expect(eventos[1].codigoHttp, 409);
+      });
+
+      test(
+          'idempotência: mesmo registroId reenviado recebe 200 e sai do SharedPreferences sem duplicar',
+          () async {
+        final processados = <String>{};
+        final totalGravacoes = <String, int>{};
+
+        final mockClient = MockClient((req) async {
+          final corpo = jsonDecode(req.body) as Map<String, dynamic>;
+          final registros =
+              (corpo['registros'] as List).cast<Map<String, dynamic>>();
+          final resultados = <Map<String, dynamic>>[];
+
+          for (final r in registros) {
+            final id = r['registroId'] as String;
+            if (processados.contains(id)) {
+              resultados.add({'registroId': id, 'codigo': 200});
+            } else {
+              processados.add(id);
+              totalGravacoes[id] = (totalGravacoes[id] ?? 0) + 1;
+              resultados.add({'registroId': id, 'codigo': 201});
+            }
+          }
+          return http.Response(
+            jsonEncode({'resultados': resultados}),
+            200,
+          );
+        });
+
+        final m = criarIntegrado(online: false, mockClient: mockClient);
+        final eventos = <EventoPendente>[];
+        final inscricao = m.aoMudarPendentes.listen(eventos.add);
+        addTearDown(inscricao.cancel);
+
+        final pendente = await m.registrarEmbarque(1, 1);
+        // Simula que o servidor já havia recebido esse registro antes da queda.
+        processados.add(pendente.registroId);
+        totalGravacoes[pendente.registroId] = 1;
+
+        connIntegrada.simularMudanca(true);
+        await pumpEventQueue();
+
+        expect(totalGravacoes[pendente.registroId], 1);
+        expect(await ArmazenamentoLocal().listar(1), isEmpty);
+        expect(eventos, hasLength(1));
+        expect(eventos.first.registroId, pendente.registroId);
+        expect(eventos.first.sincronizado, isTrue);
+      });
+    },
+  );
 }
