@@ -32,6 +32,7 @@ void main() {
     expect(notificacao.tipo, TipoMovimentacao.embarque);
     expect(notificacao.responsavelId, responsavel.id);
     expect(notificacao.alunoId, aluno.id);
+    expect(notificacao.aluno, same(aluno));
     expect(notificacao.lida, isFalse);
     expect(notificacao.mensagem, 'Ana Souza embarcou na van às 06:42.');
     expect(notificacao.dataHoraEvento, horario);
@@ -75,14 +76,24 @@ void main() {
     late NotificacaoRepositoryPostgres repositorio;
     setUp(() {
       banco = _Banco();
-      repositorio = NotificacaoRepositoryPostgres(banco);
+      repositorio = NotificacaoRepositoryPostgres(() async => banco);
     });
 
     test('consulta parametriza destinatário/data e recupera o estado salvo',
         () async {
       when(() => banco.executar(any(), any()))
           .thenAnswer((_) async => _resultado([
-                [77, 'EMBARQUE', 1, 1, 'Mensagem armazenada.', horario, true],
+                [
+                  77,
+                  'EMBARQUE',
+                  1,
+                  1,
+                  'Mensagem armazenada.',
+                  horario,
+                  true,
+                  'Ana Souza',
+                  DateTime(2014, 3, 10),
+                ],
               ]));
       final desde = horario.subtract(const Duration(minutes: 1));
       final lista = await repositorio.buscarDoResponsavel(1, desde);
@@ -90,6 +101,8 @@ void main() {
       expect(lista.single.mensagem, 'Mensagem armazenada.');
       expect(lista.single.dataHoraEvento, horario);
       expect(lista.single.lida, isTrue);
+      expect(lista.single.aluno.nome, 'Ana Souza');
+      expect(lista.single.aluno.dataNascimento, aluno.dataNascimento);
       final argumentos =
           verify(() => banco.executar(captureAny(), captureAny())).captured;
       expect(argumentos[0], contains('responsavel_id = @responsavel'));
@@ -112,7 +125,7 @@ void main() {
         id: 77,
         tipo: TipoMovimentacao.embarque,
         responsavelId: 1,
-        alunoId: 1,
+        aluno: aluno,
         mensagem: 'Mensagem armazenada.',
         dataHoraEvento: horario,
       )..marcarComoLida();
