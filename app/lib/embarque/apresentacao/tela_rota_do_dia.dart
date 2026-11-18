@@ -21,6 +21,11 @@ enum _Situacao { aguardando, enviado, pendente }
 ///   (o aluno pode embarcar fora da ordem);
 /// - "Na van": quem já embarcou, sempre com cor, ícone e texto.
 ///
+/// Um toque em "Embarcou" registra o embarque, sem diálogo de confirmação
+/// (RNF-005): o aluno vai na hora para "Na van" e a próxima parada passa a ser
+/// destacada. Embarques pendentes (sem conexão) ficam em âmbar e mudam para
+/// verde quando são sincronizados, sem recarregar a tela.
+///
 /// A tela só conversa com o [ModuloEmbarque] e com o [RotaDoDiaService],
 /// nunca direto com a API.
 class TelaRotaDoDia extends StatefulWidget {
@@ -54,6 +59,12 @@ class _TelaRotaDoDiaState extends State<TelaRotaDoDia> {
   /// Hora do embarque registrado neste aparelho, pelo identificador do aluno.
   final Map<int, DateTime> _horaDoEmbarque = {};
 
+  /// Alunos com um registro de embarque em andamento (evita toque duplo).
+  final Set<int> _registrando = {};
+
+  /// Acompanha os embarques pendentes que são sincronizados ou recusados.
+  late final _assinaturaPendentes = widget.modulo.aoMudarPendentes.listen(_aoMudarPendente);
+
   bool _carregando = true;
   String? _erro;
 
@@ -63,7 +74,14 @@ class _TelaRotaDoDiaState extends State<TelaRotaDoDia> {
   @override
   void initState() {
     super.initState();
+    _assinaturaPendentes; // começa a acompanhar os embarques pendentes
     _carregar();
+  }
+
+  @override
+  void dispose() {
+    _assinaturaPendentes.cancel();
+    super.dispose();
   }
 
   /// Busca a rota de hoje e abre a lista de alunos.
@@ -86,6 +104,8 @@ class _TelaRotaDoDiaState extends State<TelaRotaDoDia> {
   /// Carrega os alunos confirmados da rota (UC-S05 passo 1).
   Future<void> abrirRota(int rotaId) async {
     final alunos = await widget.rotaDoDiaService.listarAlunosConfirmados(rotaId);
+    // Embarques feitos sem conexão que ainda não foram enviados (RNF-006).
+    final pendentes = await widget.modulo.listarPendentes(rotaId);
     if (!mounted) return;
     setState(() {
       _alunos = alunos;
@@ -95,8 +115,92 @@ class _TelaRotaDoDiaState extends State<TelaRotaDoDia> {
               a.alunoId,
               a.embarcado ? _Situacao.enviado : _Situacao.aguardando,
             )));
+      for (final pendente in pendentes) {
+        if (_situacao[pendente.alunoId] == _Situacao.aguardando) {
+          _situacao[pendente.alunoId] = _Situacao.pendente;
+          _horaDoEmbarque[pendente.alunoId] = pendente.dataHora;
+        }
+      }
       _carregando = false;
     });
+  }
+
+  /// Registra o embarque do aluno com um toque (UC-S05 passos 2 a 4; UC-R02).
+  ///
+  /// O aluno vai para "Na van" na hora do toque. Quando o módulo responde, a
+  /// situação fica verde (enviado) ou âmbar (pendente). Se o registro falhar,
+  /// o aluno volta para a lista e uma mensagem é mostrada.
+  Future<void> confirmarEmbarque(int alunoId) async {
+    final rota = _rota;
+    if (rota == null || _registrando.contains(alunoId)) return;
+
+    setState(() {
+      _registrando.add(alunoId);
+      _situacao[alunoId] = _Situacao.enviado;
+      _horaDoEmbarque[alunoId] = DateTime.now();
+    });
+
+    try {
+      final resultado = await widget.modulo.registrarEmbarque(rota.rotaId, alunoId);
+      if (!mounted) return;
+      setState(() {
+        _situacao[alunoId] = resultado.status == StatusEnvio.pendente
+            ? _Situacao.pendente
+            : _Situacao.enviado;
+        _horaDoEmbarque[alunoId] = resultado.dataHora;
+      });
+    } on EmbarqueException catch (erro) {
+      if (!mounted) return;
+      switch (erro.codigoHttp) {
+        case 409:
+          // O aluno já tinha embarcado: ele fica em "Na van".
+          setState(() => _horaDoEmbarque.remove(alunoId));
+          _avisar('${_nomeDoAluno(alunoId)} já embarcou.');
+        case 403:
+          // RN-012: só o motorista ativo da van registra embarques.
+          _mostrarErro(_mensagemDeRecusa(403), podeTentarDeNovo: false);
+        default:
+          _voltarParaAguardando(alunoId);
+          _avisar('Não foi possível registrar. Tente de novo.');
+      }
+    } catch (_) {
+      if (!mounted) return;
+      _voltarParaAguardando(alunoId);
+      _avisar('Não foi possível registrar. Tente de novo.');
+    } finally {
+      if (mounted) setState(() => _registrando.remove(alunoId));
+    }
+  }
+
+  /// Um embarque pendente foi sincronizado (fica verde) ou recusado pelo
+  /// servidor (volta para a lista, a menos que o aluno já tenha embarcado).
+  void _aoMudarPendente(EventoPendente evento) {
+    if (!mounted) return;
+    if (evento.sincronizado || evento.codigoHttp == 409) {
+      setState(() => _situacao[evento.alunoId] = _Situacao.enviado);
+      return;
+    }
+    _voltarParaAguardando(evento.alunoId);
+    _avisar('O embarque de ${_nomeDoAluno(evento.alunoId)} foi recusado pelo servidor.');
+  }
+
+  void _voltarParaAguardando(int alunoId) {
+    setState(() {
+      _situacao[alunoId] = _Situacao.aguardando;
+      _horaDoEmbarque.remove(alunoId);
+    });
+  }
+
+  /// Mensagem rápida no rodapé da tela.
+  void _avisar(String mensagem) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(mensagem)));
+  }
+
+  String _nomeDoAluno(int alunoId) {
+    final aluno = _alunos.where((a) => a.alunoId == alunoId);
+    return aluno.isEmpty ? 'O aluno' : aluno.first.nome;
   }
 
   void _mostrarErro(String mensagem, {required bool podeTentarDeNovo}) {
@@ -113,6 +217,10 @@ class _TelaRotaDoDiaState extends State<TelaRotaDoDia> {
         404 => 'Você não tem rota para hoje.',
         _ => 'Não foi possível carregar a rota. Tente de novo.',
       };
+
+  /// Ação do botão "Embarcou" do aluno (desativado enquanto registra).
+  VoidCallback? _aoTocar(int alunoId) =>
+      _registrando.contains(alunoId) ? null : () => confirmarEmbarque(alunoId);
 
   List<AlunoDaRota> get _aguardando =>
       _alunos.where((a) => _situacao[a.alunoId] == _Situacao.aguardando).toList();
@@ -176,12 +284,15 @@ class _TelaRotaDoDiaState extends State<TelaRotaDoDia> {
                       const _AvisoTodosEmbarcaram()
                     else ...[
                       const _TituloSecao('PRÓXIMA PARADA'),
-                      _CartaoProximaParada(aluno: aguardando.first, aoEmbarcar: null),
+                      _CartaoProximaParada(
+                        aluno: aguardando.first,
+                        aoEmbarcar: _aoTocar(aguardando.first.alunoId),
+                      ),
                       if (aguardando.length > 1) ...[
                         const SizedBox(height: 24),
                         const _TituloSecao('DEPOIS'),
                         for (final aluno in aguardando.skip(1))
-                          _LinhaDepois(aluno: aluno, aoEmbarcar: null),
+                          _LinhaDepois(aluno: aluno, aoEmbarcar: _aoTocar(aluno.alunoId)),
                       ],
                     ],
                     const SizedBox(height: 24),
