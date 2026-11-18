@@ -9,7 +9,7 @@ import 'package:vantrack_backend/compartilhado/infraestrutura/sessao_repository_
 import 'package:vantrack_backend/cadastro/infraestrutura/vinculo_repository_postgres.dart';
 import 'package:vantrack_backend/embarque/aplicacao/embarque_service.dart';
 import 'package:vantrack_backend/embarque/apresentacao/embarque_controller.dart';
-import 'package:vantrack_backend/notificacao/aplicacao/notificacao_service_vazio.dart';
+import 'package:vantrack_backend/notificacao/aplicacao/notificacao_service_padrao.dart';
 import 'package:vantrack_backend/notificacao/aplicacao/avisos_service.dart';
 import 'package:vantrack_backend/notificacao/apresentacao/notificacao_controller.dart';
 import 'package:vantrack_backend/notificacao/infraestrutura/notificacao_repository_postgres.dart';
@@ -30,14 +30,18 @@ Handler middleware(Handler handler) {
 
   // UC-S05 (B-08): composição do EmbarqueService com as implementações
   // Postgres. O pool de conexões é único (ConexaoBanco.abrir).
-  // B-11 troca o NotificacaoServiceVazio pelo NotificacaoServicePadrao (C-04).
+  // <<include>> UC-I02 (B-11): NotificacaoServicePadrao (C-04) no lugar do
+  // NotificacaoServiceVazio.
   Future<ConexaoBanco> conexao() => ConexaoBanco.abrir(lerDatabaseUrl());
   final embarqueController = EmbarqueController(
     EmbarqueService(
       rotaRepository: RotaRepositoryPostgres(conexao),
       presencaRepository: PresencaRepositoryPostgres(conexao),
       vinculoRepository: VinculoRepositoryPostgres(conexao),
-      notificacaoService: const NotificacaoServiceVazio(),
+      notificacaoService: NotificacaoServicePadrao(
+        vinculoRepository: VinculoRepositoryPostgres(conexao),
+        notificacaoRepository: NotificacaoRepositoryPostgres(conexao),
+      ),
     ),
   );
 
