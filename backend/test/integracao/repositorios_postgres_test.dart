@@ -105,5 +105,17 @@ void main() {
       expect(await repositorio.buscarResponsaveis(1), hasLength(2));
       expect(await repositorio.buscarResponsaveis(3), isEmpty);
     }, skip: pular);
+
+    test('Maria recebe só a Ana e Fernanda só a Beatriz (RN-002, VT-70)',
+        () async {
+      final repositorio = VinculoRepositoryPostgres(() async => conexao);
+
+      final daMaria = await repositorio.buscarAlunosDoResponsavel(1);
+      final daFernanda = await repositorio.buscarAlunosDoResponsavel(3);
+
+      expect(daMaria.map((a) => a.nome), ['Ana Souza']);
+      expect(daFernanda.map((a) => a.nome), ['Beatriz Reis']);
+      expect(await repositorio.buscarAlunosDoResponsavel(99), isEmpty);
+    }, skip: pular);
   });
 }

@@ -74,6 +74,7 @@ header `Authorization: Bearer <token>`; sem ele, `401`:
 | `GET /rotas/hoje` | motorista | 200 `{rotaId, trajeto, horarioPrevisto, placa}`; 403 se não for motorista; 404 sem rota hoje (inclui o motorista sem vínculo) |
 | `GET /rotas/{rotaId}/alunos` | motorista ativo da van | 200 com os alunos na ordem (sem os ausentes); 403 (RN-012); 404 |
 | `POST /rotas/{rotaId}/embarques` | motorista ativo da van | 201, 200 (mesmo `registroId`), 400, 403, 404, 409 |
+| `GET /alunos` | responsável | 200 `[{alunoId, nome}]` com os alunos dele (RN-002); 403 se não for responsável |
 
 ```bash
 curl http://localhost:8080/usuarios
