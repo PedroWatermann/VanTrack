@@ -18,7 +18,8 @@ com o banco.
 
 ### 1. Pré-requisitos
 
-- Flutter estável com Dart 3.10 ou mais novo (`flutter --version`).
+- Flutter 3.47 ou mais novo, que traz o Dart 3.13 (`flutter --version`). Se for mais
+  antigo, atualize com `flutter upgrade`.
 - Dart Frog CLI:
 
   ```bash

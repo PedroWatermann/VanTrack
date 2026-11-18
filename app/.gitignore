@@ -46,3 +46,7 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# O .gitignore da raiz ignora *.lock, mas em um app o pubspec.lock deve ir para o
+# repositório: assim todos instalam as mesmas versões dos pacotes (Bug VT-69).
+!pubspec.lock
