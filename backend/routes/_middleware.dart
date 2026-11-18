@@ -6,6 +6,8 @@ import 'package:vantrack_backend/compartilhado/apresentacao/cors.dart';
 import 'package:vantrack_backend/compartilhado/infraestrutura/ambiente.dart';
 import 'package:vantrack_backend/compartilhado/infraestrutura/conexao_banco.dart';
 import 'package:vantrack_backend/compartilhado/infraestrutura/sessao_repository_postgres.dart';
+import 'package:vantrack_backend/cadastro/aplicacao/aluno_service.dart';
+import 'package:vantrack_backend/cadastro/apresentacao/aluno_controller.dart';
 import 'package:vantrack_backend/cadastro/infraestrutura/vinculo_repository_postgres.dart';
 import 'package:vantrack_backend/embarque/aplicacao/embarque_service.dart';
 import 'package:vantrack_backend/embarque/apresentacao/embarque_controller.dart';
@@ -45,10 +47,16 @@ Handler middleware(Handler handler) {
     AvisosService(NotificacaoRepositoryPostgres(conexao)),
   );
 
+  // VT-70: alunos do responsável logado, para a tela "Avisos".
+  final alunoController = AlunoController(
+    AlunoService(VinculoRepositoryPostgres(conexao)),
+  );
+
   final autenticado = handler
       .use(provider<AutenticacaoController>((_) => controller))
       .use(provider<EmbarqueController>((_) => embarqueController))
       .use(provider<NotificacaoController>((_) => notificacaoController))
+      .use(provider<AlunoController>((_) => alunoController))
       .use(AutenticacaoMiddleware(repositorio).middleware());
   Future<Response> atender(RequestContext context) async {
     try {

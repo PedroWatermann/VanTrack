@@ -1,4 +1,5 @@
 import '../../compartilhado/infraestrutura/conexao_banco.dart';
+import '../dominio/aluno.dart';
 import '../dominio/responsavel.dart';
 import '../dominio/vinculo_motorista_van.dart';
 import '../dominio/vinculo_repository.dart';
@@ -37,6 +38,29 @@ class VinculoRepositoryPostgres implements VinculoRepository {
         senhaHash: m['senha_hash'] as String?,
         telefone: m['telefone'] as String,
         email: m['email'] as String,
+      );
+    }).toList();
+  }
+
+  @override
+  Future<List<Aluno>> buscarAlunosDoResponsavel(int responsavelId) async {
+    final resultado = await (await _obterConexao()).executar(
+      '''
+      select a.id, a.nome, a.data_nascimento
+        from aluno a
+        join aluno_responsavel ar on ar.aluno_id = a.id
+       -- RN-002: só os alunos vinculados a este responsável
+       where ar.responsavel_id = @responsavel_id
+       order by a.nome, a.id
+      ''',
+      {'responsavel_id': responsavelId},
+    );
+    return resultado.map((linha) {
+      final m = linha.toColumnMap();
+      return Aluno(
+        id: m['id'] as int,
+        nome: m['nome'] as String,
+        dataNascimento: m['data_nascimento'] as DateTime,
       );
     }).toList();
   }
