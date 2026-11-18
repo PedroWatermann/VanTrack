@@ -18,7 +18,7 @@ class Notificacao {
     this.id,
     required this.tipo,
     required this.responsavelId,
-    required this.alunoId,
+    required this.aluno,
     required this.mensagem,
     required DateTime dataHoraEvento,
     bool lida = false,
@@ -33,7 +33,7 @@ class Notificacao {
       Notificacao(
         tipo: TipoMovimentacao.embarque,
         responsavelId: destinatario.id,
-        alunoId: aluno.id,
+        aluno: aluno,
         mensagem:
             '${aluno.nome} embarcou na van às ${HorarioBrasilia.formatarHoraMinuto(dataHoraEmbarque)}.',
         dataHoraEvento: dataHoraEmbarque,
@@ -42,7 +42,10 @@ class Notificacao {
   final int? id;
   final TipoMovimentacao tipo;
   final int responsavelId;
-  final int alunoId;
+
+  /// Associação Notificacao → Aluno do diagrama; permite consultar o nome real.
+  final Aluno aluno;
+  int get alunoId => aluno.id;
   final String mensagem;
   final DateTime dataHoraEvento;
   bool _lida;

@@ -10,6 +10,9 @@ import 'package:vantrack_backend/cadastro/infraestrutura/vinculo_repository_post
 import 'package:vantrack_backend/embarque/aplicacao/embarque_service.dart';
 import 'package:vantrack_backend/embarque/apresentacao/embarque_controller.dart';
 import 'package:vantrack_backend/notificacao/aplicacao/notificacao_service_vazio.dart';
+import 'package:vantrack_backend/notificacao/aplicacao/avisos_service.dart';
+import 'package:vantrack_backend/notificacao/apresentacao/notificacao_controller.dart';
+import 'package:vantrack_backend/notificacao/infraestrutura/notificacao_repository_postgres.dart';
 import 'package:vantrack_backend/rota/infraestrutura/presenca_repository_postgres.dart';
 import 'package:vantrack_backend/rota/infraestrutura/rota_repository_postgres.dart';
 
@@ -38,9 +41,14 @@ Handler middleware(Handler handler) {
     ),
   );
 
+  final notificacaoController = NotificacaoController(
+    AvisosService(NotificacaoRepositoryPostgres(conexao)),
+  );
+
   final autenticado = handler
       .use(provider<AutenticacaoController>((_) => controller))
       .use(provider<EmbarqueController>((_) => embarqueController))
+      .use(provider<NotificacaoController>((_) => notificacaoController))
       .use(AutenticacaoMiddleware(repositorio).middleware());
   Future<Response> atender(RequestContext context) async {
     try {
