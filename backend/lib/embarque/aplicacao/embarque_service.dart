@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import '../../cadastro/dominio/vinculo_repository.dart';
 import '../../compartilhado/aplicacao/excecoes.dart';
 import '../../notificacao/aplicacao/notificacao_service.dart';
@@ -123,6 +125,9 @@ class EmbarqueService {
   /// de novo. Vale também para duas requisições simultâneas com o mesmo
   /// registro: a unicidade do banco recusa a segunda.
   ///
+  /// Se a notificação (UC-I02) falhar depois de salvar, o embarque continua
+  /// registrado (201) e o erro vai para o log do servidor.
+  ///
   /// Lança:
   /// - [NaoEncontradoException] (404): a rota não existe ou o aluno não tem
   ///   presença nela;
@@ -178,10 +183,22 @@ class EmbarqueService {
     }
 
     // <<include>> UC-I02, só depois de salvar (UC-S05 passo 5).
-    await _notificacaoService.notificarMovimentacao(
-      presenca,
-      TipoMovimentacao.embarque,
-    );
+    try {
+      await _notificacaoService.notificarMovimentacao(
+        presenca,
+        TipoMovimentacao.embarque,
+      );
+    } on Object catch (erro, pilha) {
+      // O embarque já está salvo: uma falha no aviso não desfaz o registro
+      // nem vira erro para o motorista (o app reenviaria e receberia 200 sem
+      // notificar de novo). O erro fica no log do servidor (decisão da B-11).
+      developer.log(
+        'Falha ao notificar o embarque $registroId (aluno $alunoId).',
+        name: 'EmbarqueService',
+        error: erro,
+        stackTrace: pilha,
+      );
+    }
 
     return ResultadoRegistro(alunoId: alunoId, situacao: presenca.situacao);
   }

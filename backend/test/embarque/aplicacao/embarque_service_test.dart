@@ -155,9 +155,8 @@ void main() {
 
       await registrar();
 
-      final salva =
-          verify(() => presencas.salvar(captureAny())).captured.single
-              as Presenca;
+      final salva = verify(() => presencas.salvar(captureAny())).captured.single
+          as Presenca;
       expect(salva.situacao, SituacaoPresenca.embarcado);
       expect(salva.embarque!.registroId, registroId);
       expect(salva.embarque!.dataHora, horaDoToque);
@@ -221,8 +220,7 @@ void main() {
       expect(segundo.alunoId, alunoId);
       expect(segundo.situacao, SituacaoPresenca.embarcado);
       verify(() => presencas.salvar(any())).called(1);
-      verify(() => notificacoes.notificarMovimentacao(any(), any()))
-          .called(1);
+      verify(() => notificacoes.notificarMovimentacao(any(), any())).called(1);
     });
 
     test('o 200 devolve o mesmo corpo do 201 (alunoId e status)', () async {
@@ -244,8 +242,7 @@ void main() {
       expect(r200.situacao.codigo, 'EMBARCADO');
     });
 
-    test('corrida com o mesmo registroId: 200 sem notificar de novo',
-        () async {
+    test('corrida com o mesmo registroId: 200 sem notificar de novo', () async {
       final p = presenca(SituacaoPresenca.confirmado);
       var consultas = 0;
       when(() => presencas.buscarPresenca(alunoId, rotaId))
@@ -387,6 +384,25 @@ void main() {
       );
       verifyNever(() => notificacoes.notificarMovimentacao(any(), any()));
     });
+  });
+
+  test('se a notificação falhar depois de salvar, o embarque continua 201',
+      () async {
+    // Decisão da B-11: o aviso que falha não desfaz o embarque já salvo.
+    final p = presenca(SituacaoPresenca.confirmado);
+    when(() => presencas.buscarPresenca(alunoId, rotaId))
+        .thenAnswer((_) async => p);
+    when(() => notificacoes.notificarMovimentacao(any(), any()))
+        .thenThrow(StateError('falha ao gravar o aviso'));
+
+    final resultado = await registrar();
+
+    expect(resultado.jaProcessado, isFalse, reason: '201');
+    expect(resultado.situacao, SituacaoPresenca.embarcado);
+    verify(() => presencas.salvar(p)).called(1);
+    verify(() =>
+            notificacoes.notificarMovimentacao(p, TipoMovimentacao.embarque))
+        .called(1);
   });
 
   test('se salvar falhar, ninguém é notificado', () async {
