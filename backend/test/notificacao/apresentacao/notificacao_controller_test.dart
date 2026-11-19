@@ -121,6 +121,7 @@ void main() {
       {
         'id': 10,
         'tipo': 'EMBARQUE',
+        'alunoId': 1,
         'alunoNome': 'Ana Souza',
         'mensagem': 'Ana Souza embarcou na van às 06:42.',
         'dataHora': '2026-11-16T06:42:10-03:00',

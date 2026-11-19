@@ -8,7 +8,7 @@ import '../api_client.dart';
 ///
 /// Usa os dados de teste combinados pelo grupo (seção 6 do backlog):
 /// a rota de hoje com Ana Souza, Beatriz Reis e Carlos Lima confirmados,
-/// e Bruno Alves ausente (por isso não aparece na lista).
+/// e Bruno Alves ausente (por isso não aparece na lista da rota).
 ///
 /// Os embarques ficam guardados apenas enquanto o app está aberto. Ao fechar
 /// o app, os dados voltam ao estado inicial.
@@ -163,6 +163,12 @@ class DadosMock {
       }
     }
 
+    // RN-002: consulta os vínculos do responsável identificado pelo token.
+    if (metodo == 'GET' && _igual(partes, ['alunos'])) {
+      if (papel != 'RESPONSAVEL') return const RespostaApi(403);
+      return RespostaApi(200, _alunosDoResponsavel(id));
+    }
+
     // Avisos do responsável logado (usados na tela "Avisos").
     if (metodo == 'GET' && _igual(partes, ['notificacoes'])) {
       if (papel != 'RESPONSAVEL') return const RespostaApi(403);
@@ -267,6 +273,7 @@ class DadosMock {
         'id': _proximaNotificacaoId++,
         'responsavelId': responsavelId,
         'tipo': 'EMBARQUE',
+        'alunoId': alunoId,
         'alunoNome': nome,
         'mensagem': '$nome embarcou na van às ${_horaDeBrasilia(dataHora)}.',
         'dataHora': dataHora,
@@ -288,9 +295,23 @@ class DadosMock {
     return avisos.reversed.toList(); // mais recente primeiro
   }
 
-  /// Busca o nome do aluno pelo identificador.
-  String _nomeDoAluno(int alunoId) =>
-      alunosConfirmados.firstWhere((a) => a['alunoId'] == alunoId)['nome'] as String;
+  /// Inclui alunos vinculados mesmo quando estão fora da lista da rota.
+  List<Map<String, Object>> _alunosDoResponsavel(int responsavelId) {
+    final alunos = [
+      for (final vinculo in responsaveisDoAluno.entries)
+        if (vinculo.value.contains(responsavelId))
+          {'alunoId': vinculo.key, 'nome': _nomeDoAluno(vinculo.key)},
+    ];
+    alunos.sort((a, b) => (a['nome'] as String).compareTo(b['nome'] as String));
+    return alunos;
+  }
+
+  /// Busca o nome do aluno pelo identificador, incluindo o ausente do seed.
+  String _nomeDoAluno(int alunoId) {
+    if (alunoId == alunoAusenteId) return 'Bruno Alves';
+    final aluno = alunosConfirmados.firstWhere((a) => a['alunoId'] == alunoId);
+    return aluno['nome'] as String;
+  }
 
   /// Formata a hora como HH:MM (ex.: 06:42), no horário de Brasília.
   String _horaDeBrasilia(String dataHora) {

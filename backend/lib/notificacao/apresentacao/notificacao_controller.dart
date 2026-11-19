@@ -32,6 +32,7 @@ class NotificacaoController {
         {
           'id': aviso.id,
           'tipo': aviso.tipo.codigo,
+          'alunoId': aviso.aluno.id,
           'alunoNome': aviso.aluno.nome,
           'mensagem': aviso.mensagem,
           'dataHora': HorarioBrasilia.formatarIso8601(aviso.dataHoraEvento),

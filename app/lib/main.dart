@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'avisos/aplicacao/avisos_service.dart';
 import 'avisos/apresentacao/tela_avisos.dart';
+import 'avisos/infraestrutura/avisos_api.dart';
 import 'compartilhado/api_client.dart';
 import 'compartilhado/cores.dart';
 import 'compartilhado/sessao.dart';
@@ -79,7 +81,10 @@ class VanTrackApp extends StatelessWidget {
           rotaDoDiaService: rotaDoDiaService,
           online: online,
         ),
-        telaDoResponsavel: (usuario) => TelaAvisos(usuario: usuario),
+        telaDoResponsavel: (usuario) => EscopoAvisos(
+          service: AvisosService(AvisosApi(loginService.api)),
+          child: TelaAvisos(usuario: usuario),
+        ),
       ),
     );
   }
