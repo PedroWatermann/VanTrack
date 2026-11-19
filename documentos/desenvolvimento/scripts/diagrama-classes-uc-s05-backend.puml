@@ -1,7 +1,8 @@
 @startuml diagrama-classes-uc-s05-backend
 ' Diagrama 2 de 3 — Back-end do UC-S05: apresentação, aplicação e infraestrutura.
 ' As entidades aparecem só com o nome; atributos e operações estão no Diagrama 1
-' (diagrama-classes-uc-s05.puml). Task B-01.
+' (diagrama-classes-uc-s05.puml). Task B-01; atualizado com o código real da
+' desenvolvimento na task B-12 (VT-64).
 
 title UC-S05 Registrar Embarque — Diagrama de classes (2/3): camadas do back-end
 
@@ -16,11 +17,14 @@ package "domínio (detalhado no Diagrama 1)" as dom {
   class Presenca
   class Rota
   class Notificacao
+  class Usuario
+  class Sessao
   class Localizacao <<value object>>
   enum SituacaoPresenca
   enum TipoMovimentacao
   enum Papel
   interface SessaoRepository <<contrato>>
+  interface UsuarioRepository <<contrato>>
   interface PresencaRepository <<contrato>>
   interface RotaRepository <<contrato>>
   interface VinculoRepository <<contrato>>
@@ -28,10 +32,18 @@ package "domínio (detalhado no Diagrama 1)" as dom {
 }
 
 ' ===================================================================
-package "autenticação :: apresentação (apoio)" as comp_apr {
+' Login: apoio, fora do ciclo de implementação. Pasta-alvo lib/autenticacao/;
+' hoje em lib/compartilhado/ (Bug do ponto 15 do 03-arquitetura.md).
+package "autenticação :: apresentação (apoio)" as aut_apr {
+  class AutenticacaoController <<apoio>> {
+    + service : AutenticacaoService {readOnly}
+    + listarUsuarios(metodo : HttpMethod) : Future<Response>
+    + entrar(pedido : Request) : Future<Response>
+  }
   class AutenticacaoMiddleware <<apoio>> {
-    - sessaoRepository : SessaoRepository
+    + sessoes : SessaoRepository {readOnly}
     + identificar(token : String?) : Future<UsuarioLogado>
+    + middleware() : Middleware
   }
   class UsuarioLogado <<apoio>> {
     + id : int {readOnly}
@@ -39,11 +51,19 @@ package "autenticação :: apresentação (apoio)" as comp_apr {
   }
 }
 
-note bottom of comp_apr
-  Login fora do ciclo de implementação:
-  o middleware só transforma o token do
-  header Authorization em UsuarioLogado
-  (sem token válido -> 401).
+package "autenticação :: aplicação (apoio)" as aut_apl {
+  class AutenticacaoService <<apoio>> {
+    + usuarios : UsuarioRepository {readOnly}
+    + sessoes : SessaoRepository {readOnly}
+    + listarUsuarios() : Future<List<Usuario>>
+    + entrar(id : int, papel : Papel) : Future<Sessao?>
+  }
+}
+
+note bottom of aut_apr
+  O middleware transforma o token do header
+  Authorization em UsuarioLogado e o entrega
+  às rotas (sem token válido -> 401).
 end note
 
 package "compartilhado :: aplicação" as comp_apl {
@@ -61,18 +81,22 @@ package "compartilhado :: infraestrutura" as comp_inf {
     + {static} abrir(databaseUrl : String) : Future<ConexaoBanco>
     + executar(sql : String, parametros : Map<String, Object?>) : Future<Result>
     + emTransacao<T>(acao : Future<T> Function(TxSession)) : Future<T>
+    + fechar() : Future<void>
   }
 }
 
 ' ===================================================================
 package "embarque :: apresentação" as emb_apr {
   class EmbarqueController {
-    - service : EmbarqueService
-    + buscarRotaDoDia(usuario : UsuarioLogado) : Future<Response>
-    + listarAlunos(rotaId : int, usuario : UsuarioLogado) : Future<Response>
-    + registrarEmbarque(rotaId : int, corpo : Map<String, dynamic>, usuario : UsuarioLogado) : Future<Response>
-    + sincronizar(rotaId : int, corpo : Map<String, dynamic>, usuario : UsuarioLogado) : Future<Response>
-    - codigoHttpDe(erro : Object) : int
+    + service : EmbarqueService {readOnly}
+    + buscarRotaDoDia(pedido : Request, usuario : UsuarioLogado) : Future<Response>
+    + listarAlunos(rotaId : String, pedido : Request, usuario : UsuarioLogado) : Future<Response>
+    + registrarEmbarque(rotaId : String, pedido : Request, usuario : UsuarioLogado) : Future<Response>
+    + sincronizar(rotaId : String, pedido : Request, usuario : UsuarioLogado) : Future<Response>
+    - traduzindoErros(acao : Future<Response> Function()) : Future<Response>
+    - codigoDoRegistro(rotaId : int, item : Object?, motoristaId : int) : Future<int>
+    - codigoHttpDe(erro : Exception) : int?
+    - mensagemDe(erro : Exception) : String
   }
 }
 
@@ -82,10 +106,12 @@ package "embarque :: aplicação" as emb_apl {
     - presencaRepository : PresencaRepository
     - vinculoRepository : VinculoRepository
     - notificacaoService : NotificacaoService
+    - relogio : DateTime Function()
     + buscarRotaDoDia(motoristaId : int) : Future<Rota>
     + listarAlunosConfirmados(rotaId : int, motoristaId : int) : Future<List<Presenca>>
-    + registrarEmbarque(rotaId : int, alunoId : int, registroId : String, dataHora : DateTime, localizacao : Localizacao?, motoristaId : int) : Future<ResultadoRegistro>
+    + registrarEmbarque(rotaId : int, alunoId : int, registroId : String, dataHora : DateTime, motoristaId : int, localizacao : Localizacao?) : Future<ResultadoRegistro>
     - validarMotoristaAtivo(rota : Rota, motoristaId : int) : Future<void>
+    - jaProcessado(alunoId : int, presenca : Presenca) : ResultadoRegistro
   }
 
   class ResultadoRegistro {
@@ -95,12 +121,18 @@ package "embarque :: aplicação" as emb_apl {
   }
 }
 
+note bottom of emb_apl
+  registrarEmbarque usa parâmetros nomeados em Dart.
+  relogio é injetável para testar o "hoje" em
+  horário de Brasília (buscarRotaDoDia).
+end note
+
 ' ===================================================================
 package "notificacao :: apresentação" as not_apr {
   class NotificacaoController {
-    - avisosService : AvisosService
-    + listar(usuario : UsuarioLogado, desde : DateTime?) : Future<Response>
-    + marcarComoLida(notificacaoId : int, usuario : UsuarioLogado) : Future<Response>
+    + avisosService : AvisosService {readOnly}
+    + listar(pedido : Request, usuario : UsuarioLogado) : Future<Response>
+    + marcarComoLida(notificacaoId : String, pedido : Request, usuario : UsuarioLogado) : Future<Response>
   }
 }
 
@@ -114,13 +146,13 @@ package "notificacao :: aplicação" as not_apl {
   }
 
   class NotificacaoServicePadrao {
-    - vinculoRepository : VinculoRepository
-    - notificacaoRepository : NotificacaoRepository
+    + vinculoRepository : VinculoRepository {readOnly}
+    + notificacaoRepository : NotificacaoRepository {readOnly}
     + notificarMovimentacao(presenca : Presenca, tipo : TipoMovimentacao) : Future<void>
   }
 
   class AvisosService {
-    - notificacaoRepository : NotificacaoRepository
+    + notificacaoRepository : NotificacaoRepository {readOnly}
     + listarDoResponsavel(responsavelId : int, desde : DateTime?) : Future<List<Notificacao>>
     + marcarComoLida(notificacaoId : int, responsavelId : int) : Future<void>
   }
@@ -129,28 +161,30 @@ package "notificacao :: aplicação" as not_apl {
 ' ===================================================================
 package "infraestrutura (implementações Postgres)" as infra {
   class PresencaRepositoryPostgres {
-    - conexao : ConexaoBanco
+    - obterConexao : Future<ConexaoBanco> Function()
   }
   class RotaRepositoryPostgres {
-    - conexao : ConexaoBanco
+    - obterConexao : Future<ConexaoBanco> Function()
   }
   class VinculoRepositoryPostgres {
-    - conexao : ConexaoBanco
+    - obterConexao : Future<ConexaoBanco> Function()
   }
   class NotificacaoRepositoryPostgres {
-    - conexao : ConexaoBanco
+    - obterConexao : Future<ConexaoBanco> Function()
   }
   class SessaoRepositoryPostgres {
-    - conexao : ConexaoBanco
+    + obterConexao : Future<ConexaoBanco> Function() {readOnly}
   }
 }
 
 note top of infra
   Cada implementação fica na pasta
   infraestrutura/ do seu módulo
-  (rota, cadastro, notificacao) e
-  implementa todas as operações do
+  (rota, cadastro, notificacao, autenticacao)
+  e implementa todas as operações do
   contrato (listadas no Diagrama 1).
+  Recebem uma função que abre a conexão
+  (pool único em ConexaoBanco.abrir).
 end note
 
 ' ===================================================================
@@ -161,6 +195,7 @@ EmbarqueController ..> AcessoNegadoException : <<converte em 403>>
 EmbarqueController ..> NaoEncontradoException : <<converte em 404>>
 NotificacaoController --> "1" AvisosService
 NotificacaoController ..> UsuarioLogado
+AutenticacaoController --> "1" AutenticacaoService
 UsuarioLogado --> Papel
 AutenticacaoMiddleware --> "1" SessaoRepository
 AutenticacaoMiddleware ..> UsuarioLogado : <<cria>>
@@ -174,6 +209,10 @@ EmbarqueService ..> Presenca : registrarEmbarque()
 EmbarqueService ..> ResultadoRegistro : <<cria>>
 EmbarqueService ..> AcessoNegadoException : <<lança>>
 EmbarqueService ..> NaoEncontradoException : <<lança>>
+
+AutenticacaoService --> "1" UsuarioRepository
+AutenticacaoService --> "1" SessaoRepository
+AutenticacaoService ..> Sessao : <<cria>>
 
 NotificacaoServiceVazio ..|> NotificacaoService
 NotificacaoServicePadrao ..|> NotificacaoService
@@ -189,12 +228,13 @@ PresencaRepositoryPostgres ..|> PresencaRepository
 RotaRepositoryPostgres ..|> RotaRepository
 VinculoRepositoryPostgres ..|> VinculoRepository
 NotificacaoRepositoryPostgres ..|> NotificacaoRepository
-PresencaRepositoryPostgres --> "1" ConexaoBanco
-RotaRepositoryPostgres --> "1" ConexaoBanco
-VinculoRepositoryPostgres --> "1" ConexaoBanco
-NotificacaoRepositoryPostgres --> "1" ConexaoBanco
 SessaoRepositoryPostgres ..|> SessaoRepository
-SessaoRepositoryPostgres --> "1" ConexaoBanco
+SessaoRepositoryPostgres ..|> UsuarioRepository
+PresencaRepositoryPostgres ..> ConexaoBanco
+RotaRepositoryPostgres ..> ConexaoBanco
+VinculoRepositoryPostgres ..> ConexaoBanco
+NotificacaoRepositoryPostgres ..> ConexaoBanco
+SessaoRepositoryPostgres ..> ConexaoBanco
 
 note right of EmbarqueService
   registrarEmbarque (UC-S05, passos 2 a 5):
@@ -203,8 +243,11 @@ note right of EmbarqueService
   3. registroId já processado? devolve 200
   4. presença do aluno na rota existe? senão 404
   5. presenca.registrarEmbarque(...) (RN-010, 409)
-  6. presencaRepository.salvar (1 transação)
-  7. notificacaoService.notificarMovimentacao
+  6. presencaRepository.salvar (1 transação);
+     unicidade recusada -> 200 (mesmo registro)
+     ou 409 (outro registro)
+  7. notificacaoService.notificarMovimentacao;
+     se o aviso falhar: log e 201 (B-11)
 end note
 
 note bottom of NotificacaoServicePadrao
@@ -212,6 +255,12 @@ note bottom of NotificacaoServicePadrao
   cria uma Notificacao por responsável e
   registra o comunicado.
   A1: sem responsável -> não cria nada.
+end note
+
+note bottom of comp_inf
+  Composição: routes/_middleware.dart cria os
+  repositórios Postgres e os services e os entrega
+  aos controllers por provider.
 end note
 
 @enduml
