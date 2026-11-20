@@ -36,6 +36,22 @@ void main() {
   test('sem login, as outras rotas devolvem 401', () async {
     final resposta = await api.get('/rotas/1/alunos');
     expect(resposta.codigo, 401);
+    expect((await api.get('/alunos')).codigo, 401);
+  });
+
+  test('GET /alunos exige responsável e lista os vínculos, mesmo de ausentes', () async {
+    await entrarComo(1, Papel.motorista);
+    expect((await api.get('/alunos')).codigo, 403);
+
+    await entrarComo(1, Papel.responsavel);
+    final alunosDaMaria = await api.get('/alunos');
+    expect(alunosDaMaria.codigo, 200);
+    expect(alunosDaMaria.corpo, [{'alunoId': 1, 'nome': 'Ana Souza'}]);
+
+    await entrarComo(4, Papel.responsavel);
+    final alunosDoRicardo = await api.get('/alunos');
+    expect(alunosDoRicardo.codigo, 200);
+    expect(alunosDoRicardo.corpo, [{'alunoId': 4, 'nome': 'Bruno Alves'}]);
   });
 
   test('motorista ativo vê a rota de hoje e os alunos 1, 2 e 3 em ordem (teste 1)', () async {
@@ -90,10 +106,28 @@ void main() {
 
     await entrarComo(2, Papel.responsavel); // responsável da Ana
     final daAna = await api.get('/notificacoes');
+    expect((daAna.corpo as List).single['alunoId'], 1);
     expect((daAna.corpo as List).single['mensagem'], 'Ana Souza embarcou na van às 06:42.');
 
     await entrarComo(3, Papel.responsavel); // responsável da Beatriz
     final daBeatriz = await api.get('/notificacoes');
     expect(daBeatriz.corpo, isEmpty);
+  });
+
+  test('só o destinatário pode marcar o aviso como lido (RN-002)', () async {
+    await entrarComo(1, Papel.motorista);
+    await api.post('/rotas/1/embarques', embarque('r1', 1));
+    expect((await api.patch('/notificacoes/1/lida')).codigo, 403);
+
+    await entrarComo(2, Papel.responsavel); // Também recebe um aviso próprio.
+    expect((await api.patch('/notificacoes/1/lida')).codigo, 403);
+
+    await entrarComo(1, Papel.responsavel);
+    final antes = await api.get('/notificacoes');
+    expect((antes.corpo as List).single['lida'], isFalse);
+    expect((await api.patch('/notificacoes/99/lida')).codigo, 404);
+    expect((await api.patch('/notificacoes/1/lida')).codigo, 204);
+    final depois = await api.get('/notificacoes');
+    expect((depois.corpo as List).single['lida'], isTrue);
   });
 }
