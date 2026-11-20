@@ -1,6 +1,7 @@
 @startuml diagrama-classes-uc-s05
 ' Diagrama 1 de 3 — Domínio do back-end do UC-S05 Registrar Embarque
-' (com o «include» UC-I02 e o fluxo A1). Task B-01.
+' (com o «include» UC-I02 e o fluxo A1). Task B-01; atualizado com o código
+' real da desenvolvimento na task B-12 (VT-64).
 ' Diagrama 2: diagrama-classes-uc-s05-backend.puml (apresentação, aplicação, infraestrutura)
 ' Diagrama 3: diagrama-classes-uc-s05-app.puml (aplicativo Flutter)
 
@@ -16,6 +17,7 @@ hide empty members
 package "compartilhado :: domínio" as comp_dom {
   class HorarioBrasilia <<utilitário>> {
     + {static} formatarHoraMinuto(dataHora : DateTime) : String
+    + {static} formatarIso8601(dataHora : DateTime) : String
   }
   note bottom of HorarioBrasilia
     Converte para UTC-3 (sem horário de verão)
@@ -37,13 +39,15 @@ package "cadastro :: domínio" as cad_dom {
   enum Papel {
     MOTORISTA
     RESPONSAVEL
+    + codigo : String
+    + {static} deCodigo(codigo : Object?) : Papel?
   }
 
   abstract class Usuario {
     + id : int {readOnly}
     + nome : String {readOnly}
     + login : String {readOnly}
-    - senhaHash : String
+    - senhaHash : String?
     + {abstract} papel : Papel
     + autenticar(senha : String) : bool
   }
@@ -92,7 +96,18 @@ package "autenticação :: domínio (apoio, fora do ciclo de implementação)" a
     + buscarPorToken(token : String) : Future<Sessao?>
     + salvar(sessao : Sessao) : Future<void>
   }
+
+  interface UsuarioRepository <<contrato>> {
+    + listar() : Future<List<Usuario>>
+    + buscarPorIdEPapel(id : int, papel : Papel) : Future<Usuario?>
+  }
 }
+
+note bottom of aut_dom
+  Pasta-alvo: lib/autenticacao/dominio/.
+  Hoje em lib/compartilhado/dominio/ (Bug do
+  ponto 15 do 03-arquitetura.md).
+end note
 
 ' ===================================================================
 package "rota :: domínio" as rota_dom {
@@ -100,12 +115,16 @@ package "rota :: domínio" as rota_dom {
   enum Trajeto {
     IDA
     VOLTA
+    + codigo : String
+    + {static} deCodigo(codigo : String) : Trajeto
   }
 
   enum SituacaoPresenca {
     CONFIRMADO
     AUSENTE
     EMBARCADO
+    + codigo : String
+    + {static} deCodigo(codigo : String) : SituacaoPresenca
   }
 
   class Localizacao <<value object>> {
@@ -169,6 +188,7 @@ package "notificacao :: domínio" as not_dom {
   enum TipoMovimentacao {
     EMBARQUE
     DESEMBARQUE
+    + codigo : String
   }
 
   class Notificacao {
@@ -197,6 +217,7 @@ Responsavel --|> Usuario
 Usuario --> Papel
 Sessao "0..*" --> "1" Usuario : usuário logado >
 SessaoRepository ..> Sessao
+UsuarioRepository ..> Usuario
 
 note right of Usuario
   Login e senha fazem parte do modelo,
