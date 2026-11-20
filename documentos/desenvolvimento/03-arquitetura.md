@@ -24,9 +24,10 @@ REGRAS DE NEGÓCIO -> REQUISITOS -> CASO DE USO -> DIAGRAMA DE SEQUÊNCIA
 | Seção 8 — Pontos para a equipe decidir | atualizada a cada task |
 
 > **B-12:** este documento e os três diagramas foram conferidos com o código da
-> `desenvolvimento` em 18/11 (Dia 5). O que ainda difere está na seção 8: o login
-> fora do módulo `autenticacao/` (ponto 15, Bug) e a tela "Avisos" (ponto 19,
-> pendente da C-06 e da C-07).
+> `desenvolvimento` em 18/11 (Dia 5). **Bug VT-71 (20/11):** o login foi para o módulo
+> `autenticacao/`, o `Papel` e o `UsuarioLogado` ficaram em `compartilhado/` e a VT-70
+> (`GET /alunos`) entrou nos diagramas. O que ainda difere está na seção 8: a tela
+> "Avisos" (ponto 19, pendente da C-06 e da C-07).
 
 ---
 
@@ -108,7 +109,7 @@ As mensagens dos diagramas de sequência viraram operações com o mesmo nome se
 |---|---|---|---|---|
 | `Aluno` | domínio (cadastro) | Representar o aluno transportado e saber se é menor de idade (RN-009) | id, nome, dataNascimento | `ehMenorDeIdade(referencia)` |
 | `Usuario` | domínio (cadastro), abstrata | O que motorista e responsável têm em comum: identificação, login e senha, e o papel | id, nome, login, senhaHash? (privada) | `papel` (abstrato), `autenticar(senha)` (fora do ciclo: ainda `UnimplementedError`) |
-| `Papel` | domínio (cadastro), enum | Papel do usuário na API | MOTORISTA, RESPONSAVEL; codigo | `deCodigo(codigo)` |
+| `Papel` | domínio (compartilhado), enum; reexportado por `cadastro/dominio/usuario.dart` | Papel do usuário na API | MOTORISTA, RESPONSAVEL; codigo | `deCodigo(codigo)` |
 | `Responsavel` | domínio (cadastro), herda de `Usuario` | Representar quem recebe os avisos do aluno | telefone, email | — |
 | `Motorista` | domínio (cadastro), herda de `Usuario` | Representar o motorista que opera a van | telefone, cnh | — |
 | `Sessao` | domínio (autenticação), apoio | Token de acesso de um usuário | token, usuario, criadaEm | `estaValida(agora)` |
@@ -116,7 +117,7 @@ As mensagens dos diagramas de sequência viraram operações com o mesmo nome se
 | `UsuarioRepository` | domínio (contrato), apoio | Listar os usuários do seed (`GET /usuarios`) e achar um pelo id e papel | — | `listar()`, `buscarPorIdEPapel(id, papel)` |
 | `Van` | domínio (cadastro) | Representar o veículo | id, placa, modelo, capacidade | — |
 | `VinculoMotoristaVan` | domínio (cadastro) | Dizer se o vínculo está ativo e se autoriza um motorista (RN-012) | id, inicio, fim? | `estaAtivo()`, `autoriza(motoristaId)` |
-| `VinculoRepository` | domínio (contrato) | Buscar os responsáveis de um aluno (RN-002, RN-009) e o vínculo ativo de uma van (RN-012) | — | `buscarResponsaveis(alunoId)`, `buscarVinculoAtivo(vanId)` |
+| `VinculoRepository` | domínio (contrato) | Buscar os responsáveis de um aluno (RN-002, RN-009) e o vínculo ativo de uma van (RN-012) | — | `buscarResponsaveis(alunoId)`, `buscarAlunosDoResponsavel(responsavelId)` (VT-70), `buscarVinculoAtivo(vanId)` |
 | `Rota` | domínio (rota) | Representar o percurso do dia de uma van | id, data, trajeto, horarioPrevisto, situacao | — |
 | `PontoParada` | domínio (rota) | Onde o aluno embarca | id, endereco, localizacao | — |
 | `Localizacao` | domínio (rota), value object | Par latitude/longitude, sem identidade | latitude, longitude | — |
@@ -135,7 +136,9 @@ As mensagens dos diagramas de sequência viraram operações com o mesmo nome se
 | `NotificacaoController` | apresentação (notificacao) | Converter as rotas de avisos em chamadas ao `AvisosService` | avisosService | `listar(pedido, usuario)`, `marcarComoLida(notificacaoId, pedido, usuario)` |
 | `AutenticacaoController` | apresentação (autenticação), apoio | `GET /usuarios` e `POST /login` | service | `listarUsuarios(metodo)`, `entrar(pedido)` |
 | `AutenticacaoMiddleware` | apresentação (autenticação), apoio | Ler o token do header `Authorization`, achar a `Sessao` e entregar o `UsuarioLogado` às rotas (sem token válido → 401) | sessoes | `identificar(token)`, `middleware()` |
-| `UsuarioLogado` | apresentação (autenticação), apoio | Quem fez a requisição e o seu papel; é o que os controllers recebem | id, papel | — |
+| `UsuarioLogado` | apresentação (compartilhado), apoio | Quem fez a requisição e o seu papel; é o que os controllers de todos os módulos recebem (por isso fica no compartilhado, VT-71) | id, papel | — |
+| `AlunoController` | apresentação (cadastro) | `GET /alunos`: alunos do responsável logado, para os cards da tela "Avisos" (VT-70) | service | `listarDoResponsavel(pedido, usuario)` |
+| `AlunoService` | aplicação (cadastro) | Listar só os alunos vinculados ao responsável (RN-002) | vinculoRepository | `listarDoResponsavel(responsavelId)` |
 | `AutenticacaoService` | aplicação (autenticação), apoio | Listar os usuários e abrir uma sessão (login simplificado) | usuarios, sessoes | `listarUsuarios()`, `entrar(id, papel)` |
 | `EmbarqueService` | aplicação (embarque) | **Coordenar o UC-S05**: rota existe, motorista ativo, idempotência, chamar a `Presenca`, salvar e acionar o UC-I02 (se o aviso falhar, registra no log e mantém o 201) | rotaRepository, presencaRepository, vinculoRepository, notificacaoService, relogio (injetável) | `buscarRotaDoDia(motoristaId)`, `listarAlunosConfirmados(rotaId, motoristaId)`, `registrarEmbarque(rotaId, alunoId, registroId, dataHora, motoristaId, localizacao?)` (parâmetros nomeados) |
 | `ResultadoRegistro` | aplicação (embarque) | Resultado do registro; `jaProcessado` diferencia o 201 do 200 | alunoId, situacao, jaProcessado | — |
@@ -302,8 +305,8 @@ entity → database/sistema externo), agora com nomes de camada:
 
 | Camada | Responsabilidade | Back-end (Dart Frog) | App (Flutter) |
 |---|---|---|---|
-| **Apresentação** | Receber a ação do usuário ou a requisição HTTP e devolver a resposta. Converte formatos (JSON, widgets) e erros em códigos/mensagens. **Sem regra de negócio** | arquivos de `routes/`, `EmbarqueController`, `NotificacaoController`, `AutenticacaoController`, `AutenticacaoMiddleware`, `UsuarioLogado`, CORS | `TelaRotaDoDia`, `FaixaSemConexao`, `TelaLogin`, `TelaAvisos`, `CoresApp` |
-| **Aplicação** | Coordenar o caso de uso: chamar os repositórios e as entidades na ordem do fluxo, validar acesso e acionar o `<<include>>`. Não sabe nada de HTTP, SQL ou widgets | `EmbarqueService`, `ResultadoRegistro`, `NotificacaoService` (contrato), `NotificacaoServiceVazio`, `NotificacaoServicePadrao`, `AvisosService`, `AutenticacaoService`, `AcessoNegadoException`, `NaoEncontradoException` | `ModuloEmbarque` e seus tipos, `ModuloEmbarqueOnline`, `ModuloEmbarqueComFila`, `RotaDoDiaService`, `LoginService`, `Sessao` do app |
+| **Apresentação** | Receber a ação do usuário ou a requisição HTTP e devolver a resposta. Converte formatos (JSON, widgets) e erros em códigos/mensagens. **Sem regra de negócio** | arquivos de `routes/`, `EmbarqueController`, `NotificacaoController`, `AlunoController`, `AutenticacaoController`, `AutenticacaoMiddleware`, `UsuarioLogado`, CORS | `TelaRotaDoDia`, `FaixaSemConexao`, `TelaLogin`, `TelaAvisos`, `CoresApp` |
+| **Aplicação** | Coordenar o caso de uso: chamar os repositórios e as entidades na ordem do fluxo, validar acesso e acionar o `<<include>>`. Não sabe nada de HTTP, SQL ou widgets | `EmbarqueService`, `ResultadoRegistro`, `NotificacaoService` (contrato), `NotificacaoServiceVazio`, `NotificacaoServicePadrao`, `AvisosService`, `AlunoService`, `AutenticacaoService`, `AcessoNegadoException`, `NaoEncontradoException` | `ModuloEmbarque` e seus tipos, `ModuloEmbarqueOnline`, `ModuloEmbarqueComFila`, `RotaDoDiaService`, `LoginService`, `Sessao` do app |
 | **Domínio** | As regras que pertencem ao próprio conceito (RN-010, RN-012, RN-002) e os **contratos** dos repositórios. Dart puro | entidades, value objects, enums e exceções de `cadastro`, `rota` e `notificacao`; `HorarioBrasilia`; contratos `PresencaRepository`, `RotaRepository`, `VinculoRepository`, `NotificacaoRepository`, `SessaoRepository`, `UsuarioRepository` | `AlunoDaRota`, `RotaDoDia`, `RegistroEmbarque`, `Localizacao`, `EnvioRecusadoException`, `SemConexaoException`; contratos `EmbarqueRemoto`, `FilaEmbarques`, `Conectividade`, `Localizador` |
 | **Infraestrutura** | Falar com o mundo de fora: banco, `.env`, HTTP, armazenamento do aparelho, GPS e rede. **Implementa** os contratos do domínio | `ConexaoBanco`, `lerDatabaseUrl()` (`ambiente.dart`), `PresencaRepositoryPostgres`, `RotaRepositoryPostgres`, `VinculoRepositoryPostgres`, `NotificacaoRepositoryPostgres`, `SessaoRepositoryPostgres` | `ApiClient`, `RespostaApi`, `Config`, `EmbarqueApi`, `ArmazenamentoLocal`, `MonitorConectividade`, `LocalizadorGeolocator`, `DadosMock` |
 
@@ -378,6 +381,15 @@ grep -rnE "package:(dart_frog|postgres|http|flutter|shared_preferences|connectiv
 grep -rn "_repository" backend/lib/*/apresentacao/*_controller.dart
 ```
 
+Desde o Bug VT-71, as duas regras principais também são conferidas **automaticamente** a
+cada `dart test`, por `backend/test/arquitetura/dependencias_modulos_test.dart`:
+
+- um módulo só importa módulos de nível menor (seção 4.1), ou seja, sem dependência circular;
+- nenhum arquivo de `dominio/` importa `dart_frog`, `postgres`, `http` ou `flutter`.
+
+Esse teste foi validado contra o código de antes do VT-71: ele falhava, apontando os 8 imports
+de `compartilhado/` para `cadastro/`.
+
 ---
 
 ## 4. Estrutura de diretórios
@@ -400,9 +412,9 @@ grep -rn "_repository" backend/lib/*/apresentacao/*_controller.dart
 
 | Nível | Módulo | Contém | Pode importar |
 |---|---|---|---|
-| 0 | `compartilhado` | Base técnica de todos: conexão, `.env`, CORS, exceções 403/404, `HorarioBrasilia` | **nenhum módulo** |
+| 0 | `compartilhado` | Base técnica de todos: conexão, `.env`, CORS, exceções 403/404, `HorarioBrasilia`, `Papel` e `UsuarioLogado` (a identidade da requisição) | **nenhum módulo** |
 | 1 | `cadastro` | Quem participa: `Usuario`, `Motorista`, `Responsavel`, `Aluno`, `Van`, vínculos | `compartilhado` |
-| 2 | `autenticacao` (apoio) | Login simplificado: `Sessao`, repositórios de sessão e usuário, middleware, `UsuarioLogado` | `cadastro`, `compartilhado` |
+| 2 | `autenticacao` (apoio) | Login simplificado: `Sessao`, repositórios de sessão e usuário, `AutenticacaoService`, `AutenticacaoController` e o middleware | `cadastro`, `compartilhado` |
 | 2 | `rota` | Operação do dia: `Rota`, `PontoParada`, `Presenca`, `Embarque` | `cadastro`, `compartilhado` |
 | 3 | `notificacao` | UC-I02 e avisos: `Notificacao`, `NotificacaoService`, `AvisosService` | `rota`, `autenticacao`, `cadastro`, `compartilhado` |
 | 4 | `embarque` | UC-S05: `EmbarqueService`, `EmbarqueController` | todos os outros |
@@ -413,16 +425,19 @@ Como os imports só descem de nível, **não há dependência circular**. Duas e
    recebe a `Presenca` (`notificarMovimentacao(presenca, tipo)`) e o `EmbarqueService` chama o
    `NotificacaoService`. Se a `Presenca` estivesse em `embarque/`, teríamos
    `embarque → notificacao → embarque`.
-2. **O login fica em um módulo próprio, `autenticacao/`.** Hoje (C-02) ele está em
-   `compartilhado/` e importa `Usuario` de `cadastro/`. Quando a A-07 criar
-   `cadastro/infraestrutura/vinculo_repository_postgres.dart`, que usa a `ConexaoBanco` de
-   `compartilhado/`, fecha o ciclo `cadastro ↔ compartilhado`. A mudança está no ponto 15.
+2. **O login fica em um módulo próprio, `autenticacao/`, e o `UsuarioLogado` e o `Papel`
+   ficam em `compartilhado/`** (Bug VT-71). A C-02 tinha posto o login em `compartilhado/`,
+   importando `Usuario` de `cadastro/`; com a A-07, o `cadastro/` passou a usar a
+   `ConexaoBanco` de `compartilhado/` e fechou o ciclo `cadastro ↔ compartilhado`. Mover só
+   o login não bastava: o `AlunoController` da VT-70, em `cadastro/`, usa o `UsuarioLogado`,
+   e criaria o ciclo `cadastro ↔ autenticacao`. Por isso o `UsuarioLogado`, usado pelos
+   controllers de todos os módulos, fica no `compartilhado/` junto com o `Papel`, de que
+   ele depende.
 
 ### 4.2 Back-end
 
-Árvore **real** da `desenvolvimento` em 18/11 (B-12). Entre parênteses, a task que criou o
-arquivo. O módulo `autenticacao/` é o **alvo** do Bug do ponto 15: hoje esses 8 arquivos ainda
-estão em `compartilhado/` (indicado com `hoje em:`).
+Árvore **real** do código (B-12 em 18/11, atualizada no Bug VT-71 em 20/11). Entre
+parênteses, a task que criou o arquivo.
 
 ```text
 backend/
@@ -438,6 +453,7 @@ backend/
 │   ├── index.dart                # GET /  (servidor no ar)
 │   ├── usuarios.dart             # GET /usuarios  (apoio, C-02)
 │   ├── login.dart                # POST /login  (apoio, C-02)
+│   ├── alunos.dart               # GET /alunos  (alunos do responsável logado, VT-70)
 │   ├── notificacoes/
 │   │   ├── index.dart            # GET /notificacoes?desde=  (C-05)
 │   │   └── [id]/
@@ -450,40 +466,45 @@ backend/
 │               ├── index.dart        # POST /rotas/{rotaId}/embarques  (B-08)
 │               └── sincronizar.dart  # POST /rotas/{rotaId}/embarques/sincronizar  (B-09)
 ├── lib/
-│   ├── compartilhado/            # base técnica; NÃO deve importar nenhum outro módulo (ponto 15)
+│   ├── compartilhado/            # base técnica; NÃO importa nenhum outro módulo (teste de arquitetura)
 │   │   ├── dominio/
-│   │   │   └── horario_brasilia.dart       # HH:MM e ISO 8601 em UTC-3 (C-03, A-08)
+│   │   │   ├── horario_brasilia.dart       # HH:MM e ISO 8601 em UTC-3 (C-03, A-08)
+│   │   │   └── papel.dart                  # Papel: MOTORISTA, RESPONSAVEL (A-06; movido no VT-71)
 │   │   ├── aplicacao/
 │   │   │   └── excecoes.dart               # AcessoNegadoException (403), NaoEncontradoException (404) (B-06)
 │   │   ├── apresentacao/
-│   │   │   └── cors.dart                   # CORS + preflight OPTIONS (A-02)
+│   │   │   ├── cors.dart                   # CORS + preflight OPTIONS (A-02)
+│   │   │   └── usuario_logado.dart         # identidade da requisição, usada por todos os controllers (C-02)
 │   │   └── infraestrutura/
 │   │       ├── ambiente.dart               # lê o DATABASE_URL do .env (A-01)
 │   │       └── conexao_banco.dart          # ConexaoBanco: pool único e transação (A-01)
 │   ├── cadastro/                 # quem participa do transporte
 │   │   ├── dominio/
-│   │   │   ├── usuario.dart                # Usuario (abstrata) e Papel (A-06)
+│   │   │   ├── usuario.dart                # Usuario (abstrata); reexporta o Papel (A-06)
 │   │   │   ├── motorista.dart              # Motorista extends Usuario (A-06)
 │   │   │   ├── responsavel.dart            # Responsavel extends Usuario (A-06)
 │   │   │   ├── aluno.dart                  # Aluno, ehMenorDeIdade (RN-009) (A-06)
 │   │   │   ├── van.dart                    # Van (A-06)
 │   │   │   ├── vinculo_motorista_van.dart  # estaAtivo, autoriza (RN-012) (A-06)
-│   │   │   └── vinculo_repository.dart     # contrato (A-07)
-│   │   └── infraestrutura/
-│   │       └── vinculo_repository_postgres.dart  # (A-07)
-│   ├── autenticacao/             # APOIO, fora do ciclo de implementação. ALVO do Bug do ponto 15
-│   │   ├── dominio/
-│   │   │   ├── sessao.dart                 # Sessao                      hoje em: compartilhado/dominio
-│   │   │   ├── sessao_repository.dart      # contrato                    hoje em: compartilhado/dominio
-│   │   │   └── usuario_repository.dart     # contrato do GET /usuarios   hoje em: compartilhado/dominio
+│   │   │   └── vinculo_repository.dart     # contrato (A-07, VT-70)
 │   │   ├── aplicacao/
-│   │   │   └── autenticacao_service.dart   #                             hoje em: compartilhado/aplicacao
+│   │   │   └── aluno_service.dart          # AlunoService: alunos do responsável (VT-70)
 │   │   ├── apresentacao/
-│   │   │   ├── autenticacao_controller.dart  #                           hoje em: compartilhado/apresentacao
-│   │   │   ├── autenticacao_middleware.dart  # token -> UsuarioLogado; 401 hoje em: compartilhado/apresentacao
-│   │   │   └── usuario_logado.dart           #                           hoje em: compartilhado/apresentacao
+│   │   │   └── aluno_controller.dart       # AlunoController: GET /alunos (VT-70)
 │   │   └── infraestrutura/
-│   │       └── sessao_repository_postgres.dart  # Sessao e Usuario      hoje em: compartilhado/infraestrutura
+│   │       └── vinculo_repository_postgres.dart  # (A-07, VT-70)
+│   ├── autenticacao/             # APOIO, fora do ciclo de implementação (movido de compartilhado/ no VT-71)
+│   │   ├── dominio/
+│   │   │   ├── sessao.dart                 # Sessao (C-02)
+│   │   │   ├── sessao_repository.dart      # contrato (C-02)
+│   │   │   └── usuario_repository.dart     # contrato do GET /usuarios (C-02)
+│   │   ├── aplicacao/
+│   │   │   └── autenticacao_service.dart   # listar usuários e abrir sessão (C-02)
+│   │   ├── apresentacao/
+│   │   │   ├── autenticacao_controller.dart  # GET /usuarios e POST /login (C-02)
+│   │   │   └── autenticacao_middleware.dart  # token -> UsuarioLogado; sem token válido = 401 (C-02)
+│   │   └── infraestrutura/
+│   │       └── sessao_repository_postgres.dart  # SessaoRepository e UsuarioRepository (C-02)
 │   ├── rota/                     # a operação do dia
 │   │   ├── dominio/
 │   │   │   ├── rota.dart                   # Rota e Trajeto (A-06)
@@ -516,9 +537,10 @@ backend/
 │       └── apresentacao/
 │           └── embarque_controller.dart    # (B-08, A-08, B-09)
 └── test/                         # espelha lib/: test/<módulo>/<camada>/<arquivo>_test.dart
-    ├── cadastro/dominio/          cadastro_dominio_test.dart
-    ├── compartilhado/             autenticacao_test.dart, apresentacao/cors_test.dart,
-    │                              dominio/horario_brasilia_iso_test.dart
+    ├── arquitetura/               dependencias_modulos_test.dart (sem ciclos entre módulos; domínio sem I/O) (VT-71)
+    ├── cadastro/                  dominio/cadastro_dominio_test.dart; aluno_responsavel_test.dart (VT-70)
+    ├── autenticacao/              autenticacao_test.dart (movido de compartilhado/ no VT-71)
+    ├── compartilhado/             apresentacao/cors_test.dart, dominio/horario_brasilia_iso_test.dart
     ├── rota/dominio/              rota_dominio_test.dart, presenca_registrar_embarque_test.dart
     ├── notificacao/               notificacao_test.dart; aplicacao/ (avisos_service, notificacao_service_padrao,
     │                              notificacao_service_vazio); apresentacao/notificacao_controller_test.dart
@@ -732,7 +754,7 @@ do Membro B e seguem para a revisão da equipe no fim do Dia 1.
 | 12 | **`AvisosService` separado do `NotificacaoService`.** O contrato `NotificacaoService` fica só com `notificarMovimentacao` (o que o `EmbarqueService` precisa); a consulta de avisos da tela fica em outro service, e a versão vazia não precisa implementar consultas | Duas classes de aplicação no módulo notificacao | Membro C |
 | 13 | **Contratos do app** (`EmbarqueRemoto`, `FilaEmbarques`, `Conectividade`, `Localizador`) e `RotaDoDiaService`, `AlunoDaRota`, `RegistroEmbarque`: nomes propostos aqui para aplicar no app a mesma regra do servidor (aplicação depende de contrato, infraestrutura implementa). `RegistroEmbarque` guarda a localização e o `rotaId`, que o `RegistroPendente` do contrato não tem | Como no Diagrama 3, sem mudar o `ModuloEmbarque` | Membros D e E |
 | 14 | **`TipoMovimentacao.DESEMBARQUE`** já existe no enum para o bônus UC-S06 (seção 9 do backlog); nesta entrega só EMBARQUE é usado | Enum com os dois valores | Equipe |
-| 15 | **Ciclo `cadastro ↔ compartilhado` (B-02).** O login da C-02 ficou em `compartilhado/` e importa `Usuario`, `Motorista` e `Responsavel` de `cadastro/`. A A-07 (PR #17, já mergeada) criou `cadastro/infraestrutura/vinculo_repository_postgres.dart`, que importa a `ConexaoBanco` de `compartilhado/`: **o ciclo já existe na `desenvolvimento`** | Mover os 8 arquivos do login para o módulo `lib/autenticacao/` (árvore da seção 4.2) e corrigir os imports em `routes/_middleware.dart`, `routes/login.dart`, `routes/usuarios.dart` e nos testes. Sem mudança de comportamento. **Bug no Jira** (decidido na B-12: o Membro B faz, com o OK do Membro C, porque o C está com a C-06, a C-07 e a C-08) | Membro B (Bug); Membro C revisa |
+| 15 | ~~Ciclo `cadastro ↔ compartilhado` (B-02)~~ **Resolvido no Bug VT-71.** O login da C-02 ficou em `compartilhado/` e importava `Usuario`, `Motorista` e `Responsavel` de `cadastro/`; com a A-07, o `cadastro/` passou a importar a `ConexaoBanco` de `compartilhado/`, fechando o ciclo | **Feito:** 7 arquivos do login foram para `lib/autenticacao/`; o `UsuarioLogado` ficou em `compartilhado/` e o `Papel` foi para `compartilhado/dominio/papel.dart` (se o `UsuarioLogado` fosse junto, o `AlunoController` da VT-70 criaria o ciclo `cadastro ↔ autenticacao`; seção 4.1). Só caminhos de import mudaram. O teste `test/arquitetura/dependencias_modulos_test.dart` impede que um ciclo volte | Membro B (VT-71); Membro C revisa o PR |
 | 16 | ~~Bibliotecas do app (B-02)~~ **Resolvido.** O `material_ui` saiu do `app/pubspec.yaml` e o `mocktail` entrou nos `dev_dependencies` | — | Membro D |
 | 17 | ~~Classes do código que não estão no diagrama (B-02)~~ **Resolvido na B-12.** `UsuarioRepository`, `AutenticacaoService`, `AutenticacaoController`, o login e o compartilhado do app entraram nos diagramas com os nomes reais | A tela "Avisos" continua no ponto 19 | Membro B (B-12) |
 | 18 | **RN-012 fora da cadeia do UC-S05 no 1º bimestre (B-03).** Em `atividade-02/04-rastreabilidade.md` a RN-012 só aponta para RF-002, RF-007, RF-012 e RF-014. O UC-S05 cita só a RN-010, e a sequência `UC-S05.puml` não mostra a validação do motorista. Mas o UC-S05 depende dela: só o motorista ativo da van registra (403) | Aqui a cadeia foi completada (seção 7.1). Atualizar a rastreabilidade, as regras do UC-S05 (RN-010, **RN-012**) e incluir `validarMotoristaAtivo` na sequência ("melhorias em todo o projeto") | Membro E (E-07) |

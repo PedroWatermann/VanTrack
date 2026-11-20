@@ -6,7 +6,7 @@ import '../../cadastro/dominio/usuario.dart';
 import '../dominio/sessao.dart';
 import '../dominio/sessao_repository.dart';
 import '../dominio/usuario_repository.dart';
-import 'conexao_banco.dart';
+import '../../compartilhado/infraestrutura/conexao_banco.dart';
 
 /// SQL dos usuários e sessões do login, usando a base e as entidades do membro A.
 /// RNF-002; apoio ao UC-S05/RF-009 e UC-I02/RF-011.
