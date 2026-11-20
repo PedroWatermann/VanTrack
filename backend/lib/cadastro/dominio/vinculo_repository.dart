@@ -19,4 +19,8 @@ abstract class VinculoRepository {
 
   /// RN-012: vínculo ativo da van, ou `null` se a van está sem motorista.
   Future<VinculoMotoristaVan?> buscarVinculoAtivo(int vanId);
+
+  /// RN-012: vínculo ativo do motorista, ou `null` se ele não é o motorista
+  /// ativo de nenhuma van (vira 403 no `GET /rotas/hoje`; bug do teste 7).
+  Future<VinculoMotoristaVan?> buscarVinculoAtivoDoMotorista(int motoristaId);
 }

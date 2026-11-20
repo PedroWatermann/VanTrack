@@ -89,14 +89,18 @@ void main() {
     );
     when(() => rotas.buscarPorId(rotaId)).thenAnswer((_) async => rota);
     when(() => rotas.buscarPorId(99)).thenAnswer((_) async => null);
-    when(() => vinculos.buscarVinculoAtivo(vanId)).thenAnswer(
-      (_) async => VinculoMotoristaVan(
-        id: 1,
-        motoristaId: motoristaAtivo,
-        vanId: vanId,
-        inicio: DateTime(2026),
-      ),
+    final vinculoAtivo = VinculoMotoristaVan(
+      id: 1,
+      motoristaId: motoristaAtivo,
+      vanId: vanId,
+      inicio: DateTime(2026),
     );
+    when(() => vinculos.buscarVinculoAtivo(vanId))
+        .thenAnswer((_) async => vinculoAtivo);
+    when(() => vinculos.buscarVinculoAtivoDoMotorista(motoristaAtivo))
+        .thenAnswer((_) async => vinculoAtivo);
+    when(() => vinculos.buscarVinculoAtivoDoMotorista(motoristaSemVinculo))
+        .thenAnswer((_) async => null);
     when(() => presencas.buscarConfirmados(rotaId))
         .thenAnswer((_) async => presencasDoSeed());
   });
@@ -167,12 +171,20 @@ void main() {
       expect([dia.year, dia.month, dia.day], [2026, 11, 16]);
     });
 
-    test('motorista sem rota hoje (ou sem vínculo) recebe 404', () async {
+    test('motorista sem vínculo ativo recebe 403 (RN-012, teste 7)', () async {
+      await expectLater(
+        service.buscarRotaDoDia(motoristaSemVinculo),
+        throwsA(isA<AcessoNegadoException>()),
+      );
+      verifyNever(() => rotas.buscarDoMotorista(any(), any()));
+    });
+
+    test('motorista com vínculo, mas sem rota hoje, recebe 404', () async {
       when(() => rotas.buscarDoMotorista(any(), any()))
           .thenAnswer((_) async => null);
 
       await expectLater(
-        service.buscarRotaDoDia(motoristaSemVinculo),
+        service.buscarRotaDoDia(motoristaAtivo),
         throwsA(isA<NaoEncontradoException>()),
       );
     });

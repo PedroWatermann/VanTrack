@@ -148,6 +148,23 @@ void main() {
       expect(resposta.statusCode, 404);
     });
 
+    test('motorista sem vínculo ativo recebe 403 (RN-012, teste 7)', () async {
+      when(() => service.buscarRotaDoDia(1)).thenThrow(
+        const AcessoNegadoException(
+          'Você não é o motorista ativo de nenhuma van.',
+        ),
+      );
+
+      final resposta =
+          await controller.buscarRotaDoDia(Request.get(hoje), motorista);
+
+      expect(resposta.statusCode, 403);
+      expect(
+        await resposta.json(),
+        {'erro': 'Você não é o motorista ativo de nenhuma van.'},
+      );
+    });
+
     test('responsável recebe 403', () async {
       final resposta =
           await controller.buscarRotaDoDia(Request.get(hoje), responsavel);

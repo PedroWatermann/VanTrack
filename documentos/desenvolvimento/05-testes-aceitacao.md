@@ -160,16 +160,15 @@ e um `registroId` novo. A resposta deve ser `409`.
 
 1. Saia e entre como **Marcos Oliveira**.
 
-**Esperado pelo backlog:** acesso negado (RN-012).
+**Esperado:** acesso negado (RN-012). A tela inteira mostra "Você não é o motorista ativo
+desta van.", sem lista de alunos.
 
-**Comportamento atual:** a tela mostra "Você não tem rota para hoje.", sem lista de alunos.
-Isso acontece porque o `GET /rotas/hoje` devolve `404` para motorista sem vínculo (decisão
-dos pontos 8 e 9 do `03-arquitetura.md`), e o app nem chega a pedir a lista. O acesso
-continua negado. O `403` da RN-012 se confere pela API: `GET /rotas/1/alunos` com o token
-do Marcos deve devolver `403` e "Você não é o motorista ativo desta van.".
+O `GET /rotas/hoje` devolve `403` para o motorista sem vínculo ativo com van, e o app
+mostra a mensagem do 403. Antes ele devolvia `404` e a tela dizia "Você não tem rota para
+hoje."; a equipe decidiu tratar isso como Bug (ponto 22 do `03-arquitetura.md`).
 
-**Ponto para a equipe:** considerar o teste aprovado com essa mensagem ou trocar o
-`/rotas/hoje` para devolver `403` ao motorista sem vínculo (vira Bug).
+**Pela API:** com o token do Marcos, `GET /rotas/hoje` e `GET /rotas/1/alunos` devolvem
+`403`.
 
 ### Teste 8 — Sem conexão, embarcar o aluno 2
 

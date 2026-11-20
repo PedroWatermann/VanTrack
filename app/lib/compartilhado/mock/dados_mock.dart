@@ -134,10 +134,13 @@ class DadosMock {
     final papel = usuario['papel'] as String;
     final id = usuario['id'] as int;
 
-    // Rota de hoje: apenas para motorista. Motorista sem van não tem rota (404).
+    // Rota de hoje: apenas para motorista. Motorista sem vínculo ativo com van
+    // recebe 403 (RN-012), como o servidor (bug do teste 7).
     if (metodo == 'GET' && _igual(partes, ['rotas', 'hoje'])) {
       if (papel != 'MOTORISTA') return const RespostaApi(403);
-      if (id != motoristaAtivoId) return const RespostaApi(404, {'erro': 'Motorista sem rota hoje'});
+      if (id != motoristaAtivoId) {
+        return const RespostaApi(403, {'erro': 'Você não é o motorista ativo de nenhuma van.'});
+      }
       return RespostaApi(200, rotaDeHoje);
     }
 

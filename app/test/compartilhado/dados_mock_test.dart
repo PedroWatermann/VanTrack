@@ -84,6 +84,13 @@ void main() {
     expect(resposta.codigo, 403);
   });
 
+  test('motorista sem vínculo recebe 403 na rota de hoje, como o servidor (teste 7)', () async {
+    await entrarComo(2, Papel.motorista);
+
+    final resposta = await api.get('/rotas/hoje');
+    expect(resposta.codigo, 403);
+  });
+
   test('responsável só vê os avisos dos seus alunos (testes 3 e 4)', () async {
     await entrarComo(1, Papel.motorista);
     await api.post('/rotas/1/embarques', embarque('r1', 1)); // Ana
