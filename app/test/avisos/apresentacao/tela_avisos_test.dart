@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app/avisos/aplicacao/avisos_service.dart';
 import 'package:app/avisos/apresentacao/tela_avisos.dart';
 import 'package:app/avisos/infraestrutura/avisos_api.dart';
@@ -49,25 +51,37 @@ void main() {
     'lida': lida,
   };
 
-  Future<void> abrirTela(
+  Future<_Api> abrirTela(
     WidgetTester tester, {
     List<Map<String, Object>> vinculados = alunos,
     required List<Map<String, Object>> avisos,
+    Future<RespostaApi> Function()? consultarAvisos,
+    Future<RespostaApi> Function()? marcarComoLido,
+    DateTime Function()? relogio,
   }) async {
     final api = _Api();
     when(() => api.get('/alunos'))
         .thenAnswer((_) async => RespostaApi(200, vinculados));
-    when(() => api.get('/notificacoes'))
-        .thenAnswer((_) async => RespostaApi(200, avisos));
+    when(() => api.get('/notificacoes')).thenAnswer(
+      (_) async => consultarAvisos == null
+          ? RespostaApi(200, avisos)
+          : await consultarAvisos(),
+    );
+    when(() => api.patch(any())).thenAnswer(
+      (_) async => marcarComoLido == null
+          ? const RespostaApi(204)
+          : await marcarComoLido(),
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: EscopoAvisos(
-          service: AvisosService(AvisosApi(api), agora: () => agora),
+          service: AvisosService(AvisosApi(api), agora: relogio ?? () => agora),
           child: const TelaAvisos(usuario: responsavel),
         ),
       ),
     );
     await tester.pumpAndSettle();
+    return api;
   }
 
   testWidgets(
@@ -105,7 +119,7 @@ void main() {
     tester,
   ) async {
     // Mesmo dia em UTC, mas ainda eram 23:30 do dia anterior em Brasília.
-    await abrirTela(
+    final api = await abrirTela(
       tester,
       avisos: [
         aviso(mensagem: 'Aviso de ontem', dataHora: '2026-11-16T02:30:00Z'),
@@ -122,13 +136,16 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Aviso de ontem'), findsNothing);
+    verifyNever(() => api.patch(any()));
   });
 
   testWidgets('ordena os avisos e mostra o ponto só no não lido', (
     tester,
   ) async {
-    await abrirTela(
+    final leitura = Completer<RespostaApi>();
+    final api = await abrirTela(
       tester,
+      marcarComoLido: () => leitura.future,
       avisos: [
         aviso(
           id: 9,
@@ -146,7 +163,97 @@ void main() {
     expect(find.descendant(of: novo, matching: pontoNaoLido), findsOneWidget);
     expect(find.descendant(of: antigo, matching: pontoNaoLido), findsNothing);
     expect(find.text('Na van desde 06:42'), findsOneWidget);
+    verify(() => api.patch('/notificacoes/10/lida')).called(1);
+    verifyNever(() => api.patch('/notificacoes/9/lida'));
+
+    leitura.complete(const RespostaApi(204));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: novo, matching: pontoNaoLido), findsNothing);
   });
+
+  testWidgets('mantém os avisos offline e atualiza ao recuperar a conexão', (
+    tester,
+  ) async {
+    var hora = agora;
+    var offline = false;
+    var respostas = [aviso(mensagem: 'Aviso já exibido')];
+    final api = await abrirTela(
+      tester,
+      avisos: const [],
+      relogio: () => hora,
+      consultarAvisos: () async {
+        if (offline) throw TimeoutException('Sem conexão');
+        return RespostaApi(200, respostas);
+      },
+    );
+
+    Future<void> avancar(int segundos) async {
+      final tempo = Duration(seconds: segundos);
+      hora = hora.add(tempo);
+      await tester.pump(tempo);
+      await tester.pumpAndSettle();
+    }
+
+    expect(find.text('Atualizado há 0 s'), findsOneWidget);
+    verify(() => api.get('/notificacoes')).called(1);
+
+    offline = true;
+    await avancar(9);
+    expect(find.text('Atualizado há 9 s'), findsOneWidget);
+    verifyNever(() => api.get('/notificacoes'));
+
+    await avancar(1);
+    expect(
+      find.text(
+        'Sem conexão. Os avisos podem estar desatualizados. Última atualização às 07:00.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Aviso já exibido'), findsOneWidget);
+    expect(find.text('Na van desde 06:42'), findsOneWidget);
+    verify(() => api.get('/notificacoes')).called(1);
+
+    offline = false;
+    respostas = [
+      ...respostas,
+      aviso(
+        id: 11,
+        alunoId: 2,
+        mensagem: 'Novo aviso',
+        dataHora: '2026-11-16T07:00:12-03:00',
+      ),
+    ];
+    await avancar(10);
+    expect(find.textContaining('Sem conexão.'), findsNothing);
+    expect(find.text('Atualizado há 0 s'), findsOneWidget);
+    expect(find.text('Novo aviso'), findsOneWidget);
+    expect(find.text('Na van desde 07:00'), findsOneWidget);
+    verify(() => api.get('/notificacoes')).called(1);
+    verify(() => api.patch('/notificacoes/10/lida')).called(1);
+    verify(() => api.patch('/notificacoes/11/lida')).called(1);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await avancar(20);
+    verifyNever(() => api.get('/notificacoes'));
+  });
+
+  testWidgets(
+    'PATCH que falha preserva o ponto e é repetido no próximo ciclo',
+    (tester) async {
+      var tentativas = 0;
+      final api = await abrirTela(
+        tester,
+        avisos: [aviso()],
+        marcarComoLido: () async => RespostaApi(++tentativas == 1 ? 503 : 204),
+      );
+      expect(pontoNaoLido, findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pumpAndSettle();
+      expect(pontoNaoLido, findsNothing);
+      verify(() => api.patch('/notificacoes/10/lida')).called(2);
+    },
+  );
 
   testWidgets(
     'o login do responsável abre Avisos usando o mock compartilhado',

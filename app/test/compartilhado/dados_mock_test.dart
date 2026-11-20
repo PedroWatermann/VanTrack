@@ -113,4 +113,21 @@ void main() {
     final daBeatriz = await api.get('/notificacoes');
     expect(daBeatriz.corpo, isEmpty);
   });
+
+  test('só o destinatário pode marcar o aviso como lido (RN-002)', () async {
+    await entrarComo(1, Papel.motorista);
+    await api.post('/rotas/1/embarques', embarque('r1', 1));
+    expect((await api.patch('/notificacoes/1/lida')).codigo, 403);
+
+    await entrarComo(2, Papel.responsavel); // Também recebe um aviso próprio.
+    expect((await api.patch('/notificacoes/1/lida')).codigo, 403);
+
+    await entrarComo(1, Papel.responsavel);
+    final antes = await api.get('/notificacoes');
+    expect((antes.corpo as List).single['lida'], isFalse);
+    expect((await api.patch('/notificacoes/99/lida')).codigo, 404);
+    expect((await api.patch('/notificacoes/1/lida')).codigo, 204);
+    final depois = await api.get('/notificacoes');
+    expect((depois.corpo as List).single['lida'], isTrue);
+  });
 }

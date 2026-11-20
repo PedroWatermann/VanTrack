@@ -37,6 +37,14 @@ class AvisosApi implements AvisosRemoto {
     ];
   }
 
+  @override
+  Future<void> marcarComoLida(int notificacaoId) async {
+    final resposta = await _api.patch('/notificacoes/$notificacaoId/lida');
+    if (!resposta.sucesso) {
+      throw StateError('Não foi possível marcar o aviso como lido.');
+    }
+  }
+
   Future<List<Map<String, dynamic>>> _listar(String caminho) async {
     final resposta = await _api.get(caminho);
     final corpo = resposta.corpo;

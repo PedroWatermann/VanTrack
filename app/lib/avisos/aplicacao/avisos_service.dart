@@ -25,10 +25,15 @@ class AvisosService {
   final AvisosRemoto _remoto;
   final DateTime Function() _agora;
 
+  DateTime agora() => _agora();
+
+  Future<void> marcarComoLida(int notificacaoId) =>
+      _remoto.marcarComoLida(notificacaoId);
+
   Future<AvisosDoDia> carregar() async {
     final alunos = await _remoto.listarAlunos();
     final todosOsAvisos = await _remoto.listarAvisos();
-    final consultadoEm = _agora();
+    final consultadoEm = agora();
     final hoje = horarioEmBrasilia(consultadoEm);
     final inicio = DateTime.utc(hoje.year, hoje.month, hoje.day);
     final fim = inicio.add(const Duration(days: 1));

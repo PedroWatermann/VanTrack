@@ -176,8 +176,11 @@ class DadosMock {
     }
     // Marca um aviso como lido.
     if (metodo == 'PATCH' && partes.length == 3 && partes[0] == 'notificacoes' && partes[2] == 'lida') {
+      if (papel != 'RESPONSAVEL') return const RespostaApi(403);
       final aviso = _notificacoes.where((n) => n['id'] == int.tryParse(partes[1]));
       if (aviso.isEmpty) return const RespostaApi(404);
+      // RN-002: só o destinatário pode marcar o próprio aviso.
+      if (aviso.first['responsavelId'] != id) return const RespostaApi(403);
       aviso.first['lida'] = true;
       return const RespostaApi(204);
     }
