@@ -78,13 +78,35 @@ class VinculoRepositoryPostgres implements VinculoRepository {
       {'van_id': vanId},
     );
     if (resultado.isEmpty) return null;
-    final m = resultado.first.toColumnMap();
-    return VinculoMotoristaVan(
-      id: m['id'] as int,
-      motoristaId: m['motorista_id'] as int,
-      vanId: m['van_id'] as int,
-      inicio: m['inicio'] as DateTime,
-      fim: m['fim'] as DateTime?,
-    );
+    return _paraVinculo(resultado.first.toColumnMap());
   }
+
+  @override
+  Future<VinculoMotoristaVan?> buscarVinculoAtivoDoMotorista(
+    int motoristaId,
+  ) async {
+    final resultado = await (await _obterConexao()).executar(
+      '''
+      select id, motorista_id, van_id, inicio, fim
+        from vinculo_motorista_van
+       where motorista_id = @motorista_id
+         -- RN-012: ativo = sem data de fim
+         and fim is null
+       order by inicio desc
+       limit 1
+      ''',
+      {'motorista_id': motoristaId},
+    );
+    if (resultado.isEmpty) return null;
+    return _paraVinculo(resultado.first.toColumnMap());
+  }
+
+  VinculoMotoristaVan _paraVinculo(Map<String, dynamic> m) =>
+      VinculoMotoristaVan(
+        id: m['id'] as int,
+        motoristaId: m['motorista_id'] as int,
+        vanId: m['van_id'] as int,
+        inicio: m['inicio'] as DateTime,
+        fim: m['fim'] as DateTime?,
+      );
 }

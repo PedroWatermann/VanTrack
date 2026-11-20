@@ -98,6 +98,18 @@ void main() {
       expect(vinculo?.autoriza(2), isFalse);
     }, skip: pular);
 
+    test('vínculo ativo do motorista: o 1 tem (van 1); o 2 não (teste 7)',
+        () async {
+      final repositorio = VinculoRepositoryPostgres(() async => conexao);
+
+      final doJoao = await repositorio.buscarVinculoAtivoDoMotorista(1);
+      final doMarcos = await repositorio.buscarVinculoAtivoDoMotorista(2);
+
+      expect(doJoao?.vanId, 1);
+      expect(doJoao?.estaAtivo(), isTrue);
+      expect(doMarcos, isNull);
+    }, skip: pular);
+
     test('Ana tem 2 responsáveis e Carlos nenhum (RN-009, A1 do UC-I02)',
         () async {
       final repositorio = VinculoRepositoryPostgres(() async => conexao);

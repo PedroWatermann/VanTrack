@@ -72,9 +72,22 @@ class EmbarqueService {
   /// das 21h a data UTC já é a do dia seguinte. A rota é a da van em que o
   /// motorista tem vínculo ativo (RN-012).
   ///
-  /// Lança [NaoEncontradoException] (404) se ele não tem rota hoje, o que inclui
-  /// o motorista sem vínculo com van.
+  /// Lança:
+  /// - [AcessoNegadoException] (403) se ele não é o motorista ativo de nenhuma
+  ///   van (RN-012; teste de aceitação 7);
+  /// - [NaoEncontradoException] (404) se ele tem vínculo ativo, mas a van não
+  ///   tem rota hoje.
   Future<Rota> buscarRotaDoDia(int motoristaId) async {
+    // RN-012: sem vínculo ativo com van, o acesso é negado (403), e não "sem
+    // rota" (404).
+    final vinculo =
+        await _vinculoRepository.buscarVinculoAtivoDoMotorista(motoristaId);
+    if (vinculo == null) {
+      throw const AcessoNegadoException(
+        'Você não é o motorista ativo de nenhuma van.',
+      );
+    }
+
     final hojeEmBrasilia =
         _relogio().toUtc().subtract(const Duration(hours: 3));
     final rota =

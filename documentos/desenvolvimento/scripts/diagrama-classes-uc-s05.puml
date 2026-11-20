@@ -87,6 +87,7 @@ package "cadastro :: domínio" as cad_dom {
     + buscarResponsaveis(alunoId : int) : Future<List<Responsavel>>
     + buscarAlunosDoResponsavel(responsavelId : int) : Future<List<Aluno>>
     + buscarVinculoAtivo(vanId : int) : Future<VinculoMotoristaVan?>
+    + buscarVinculoAtivoDoMotorista(motoristaId : int) : Future<VinculoMotoristaVan?>
   }
 }
 
