@@ -18,6 +18,7 @@ package "domínio (detalhado no Diagrama 1)" as dom {
   class Rota
   class Notificacao
   class Usuario
+  class Aluno
   class Sessao
   class Localizacao <<value object>>
   enum SituacaoPresenca
@@ -32,8 +33,8 @@ package "domínio (detalhado no Diagrama 1)" as dom {
 }
 
 ' ===================================================================
-' Login: apoio, fora do ciclo de implementação. Pasta-alvo lib/autenticacao/;
-' hoje em lib/compartilhado/ (Bug do ponto 15 do 03-arquitetura.md).
+' Login: apoio, fora do ciclo de implementação. lib/autenticacao/ (movido de
+' lib/compartilhado/ no Bug VT-71, ponto 15 do 03-arquitetura.md).
 package "autenticação :: apresentação (apoio)" as aut_apr {
   class AutenticacaoController <<apoio>> {
     + service : AutenticacaoService {readOnly}
@@ -45,11 +46,37 @@ package "autenticação :: apresentação (apoio)" as aut_apr {
     + identificar(token : String?) : Future<UsuarioLogado>
     + middleware() : Middleware
   }
+}
+
+package "compartilhado :: apresentação" as comp_apr {
   class UsuarioLogado <<apoio>> {
     + id : int {readOnly}
     + papel : Papel {readOnly}
   }
 }
+
+note bottom of comp_apr
+  Identidade da requisição, recebida pelos
+  controllers de todos os módulos; fica no
+  compartilhado para não criar ciclo (VT-71).
+end note
+
+' ===================================================================
+package "cadastro :: aplicação e apresentação (VT-70)" as cad_apl {
+  class AlunoController {
+    + service : AlunoService {readOnly}
+    + listarDoResponsavel(pedido : Request, usuario : UsuarioLogado) : Future<Response>
+  }
+  class AlunoService {
+    - vinculoRepository : VinculoRepository
+    + listarDoResponsavel(responsavelId : int) : Future<List<Aluno>>
+  }
+}
+
+note bottom of cad_apl
+  GET /alunos: alunos do responsável logado,
+  para os cards da tela "Avisos" (RN-002, UC-I02).
+end note
 
 package "autenticação :: aplicação (apoio)" as aut_apl {
   class AutenticacaoService <<apoio>> {
@@ -196,6 +223,10 @@ EmbarqueController ..> NaoEncontradoException : <<converte em 404>>
 NotificacaoController --> "1" AvisosService
 NotificacaoController ..> UsuarioLogado
 AutenticacaoController --> "1" AutenticacaoService
+AlunoController --> "1" AlunoService
+AlunoController ..> UsuarioLogado
+AlunoService --> "1" VinculoRepository
+AlunoService ..> Aluno
 UsuarioLogado --> Papel
 AutenticacaoMiddleware --> "1" SessaoRepository
 AutenticacaoMiddleware ..> UsuarioLogado : <<cria>>

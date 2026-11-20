@@ -24,6 +24,19 @@ package "compartilhado :: domínio" as comp_dom {
     antes de formatar HH:MM. O servidor pode
     estar em UTC.
   end note
+
+  enum Papel {
+    MOTORISTA
+    RESPONSAVEL
+    + codigo : String
+    + {static} deCodigo(codigo : Object?) : Papel?
+  }
+  note bottom of Papel
+    No compartilhado desde o Bug VT-71: é usado
+    por Usuario (cadastro) e por UsuarioLogado
+    (compartilhado). cadastro/dominio/usuario.dart
+    reexporta o enum.
+  end note
 }
 
 ' ===================================================================
@@ -34,13 +47,6 @@ package "cadastro :: domínio" as cad_dom {
     + nome : String {readOnly}
     + dataNascimento : DateTime {readOnly}
     + ehMenorDeIdade(referencia : DateTime) : bool
-  }
-
-  enum Papel {
-    MOTORISTA
-    RESPONSAVEL
-    + codigo : String
-    + {static} deCodigo(codigo : Object?) : Papel?
   }
 
   abstract class Usuario {
@@ -79,6 +85,7 @@ package "cadastro :: domínio" as cad_dom {
 
   interface VinculoRepository <<contrato>> {
     + buscarResponsaveis(alunoId : int) : Future<List<Responsavel>>
+    + buscarAlunosDoResponsavel(responsavelId : int) : Future<List<Aluno>>
     + buscarVinculoAtivo(vanId : int) : Future<VinculoMotoristaVan?>
   }
 }
@@ -104,9 +111,9 @@ package "autenticação :: domínio (apoio, fora do ciclo de implementação)" a
 }
 
 note bottom of aut_dom
-  Pasta-alvo: lib/autenticacao/dominio/.
-  Hoje em lib/compartilhado/dominio/ (Bug do
-  ponto 15 do 03-arquitetura.md).
+  lib/autenticacao/dominio/ (movido de
+  lib/compartilhado/ no Bug VT-71, ponto 15
+  do 03-arquitetura.md).
 end note
 
 ' ===================================================================

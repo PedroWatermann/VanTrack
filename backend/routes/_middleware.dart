@@ -1,11 +1,11 @@
 import 'package:dart_frog/dart_frog.dart';
-import 'package:vantrack_backend/compartilhado/aplicacao/autenticacao_service.dart';
-import 'package:vantrack_backend/compartilhado/apresentacao/autenticacao_controller.dart';
-import 'package:vantrack_backend/compartilhado/apresentacao/autenticacao_middleware.dart';
+import 'package:vantrack_backend/autenticacao/aplicacao/autenticacao_service.dart';
+import 'package:vantrack_backend/autenticacao/apresentacao/autenticacao_controller.dart';
+import 'package:vantrack_backend/autenticacao/apresentacao/autenticacao_middleware.dart';
 import 'package:vantrack_backend/compartilhado/apresentacao/cors.dart';
 import 'package:vantrack_backend/compartilhado/infraestrutura/ambiente.dart';
 import 'package:vantrack_backend/compartilhado/infraestrutura/conexao_banco.dart';
-import 'package:vantrack_backend/compartilhado/infraestrutura/sessao_repository_postgres.dart';
+import 'package:vantrack_backend/autenticacao/infraestrutura/sessao_repository_postgres.dart';
 import 'package:vantrack_backend/cadastro/aplicacao/aluno_service.dart';
 import 'package:vantrack_backend/cadastro/apresentacao/aluno_controller.dart';
 import 'package:vantrack_backend/cadastro/infraestrutura/vinculo_repository_postgres.dart';

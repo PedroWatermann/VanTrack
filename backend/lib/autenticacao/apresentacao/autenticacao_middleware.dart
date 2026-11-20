@@ -2,7 +2,7 @@ import 'package:dart_frog/dart_frog.dart';
 import 'package:uuid/validation.dart';
 
 import '../dominio/sessao_repository.dart';
-import 'usuario_logado.dart';
+import '../../compartilhado/apresentacao/usuario_logado.dart';
 
 /// Valida o token persistido e fornece UsuarioLogado no contexto.
 /// RNF-002; apoio a RN-012/RN-002 no UC-S05/RF-009 e UC-I02/RF-011.

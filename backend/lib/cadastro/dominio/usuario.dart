@@ -1,21 +1,8 @@
-/// Papel do usuário na API (diagrama de classes 1/3, cadastro :: domínio).
-enum Papel {
-  motorista('MOTORISTA'),
-  responsavel('RESPONSAVEL');
+import '../../compartilhado/dominio/papel.dart';
 
-  const Papel(this.codigo);
-
-  /// Valor usado no JSON e no banco.
-  final String codigo;
-
-  /// Converte `"MOTORISTA"`/`"RESPONSAVEL"` no enum; `null` se for inválido.
-  static Papel? deCodigo(Object? codigo) {
-    for (final papel in values) {
-      if (papel.codigo == codigo) return papel;
-    }
-    return null;
-  }
-}
+// O enum Papel mora no compartilhado (Bug VT-71); quem importa este arquivo
+// continua enxergando o Papel por este export.
+export '../../compartilhado/dominio/papel.dart';
 
 /// `Usuario` — cadastro :: domínio (abstrata).
 ///
