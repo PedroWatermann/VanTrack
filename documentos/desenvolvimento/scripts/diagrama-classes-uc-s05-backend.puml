@@ -11,6 +11,8 @@ skinparam classAttributeIconSize 0
 skinparam packageStyle rectangle
 skinparam shadowing false
 hide empty members
+' Camadas da esquerda para a direita: o diagrama fica legível numa página.
+left to right direction
 
 ' ===================================================================
 package "domínio (detalhado no Diagrama 1)" as dom {

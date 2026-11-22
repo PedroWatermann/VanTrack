@@ -1,8 +1,8 @@
 @startuml diagrama-classes-uc-s05-app
 ' Diagrama 3 de 3 — Aplicativo Flutter: módulo embarque (UC-R02 e fluxo A1),
-' login e compartilhado. O contrato ModuloEmbarque e seus tipos são EXATAMENTE
-' os da seção 3 do backlog. Task B-01; atualizado com o código real da
-' desenvolvimento na task B-12 (VT-64).
+' módulo avisos (UC-I02), login e compartilhado. O contrato ModuloEmbarque e
+' seus tipos são EXATAMENTE os da seção 3 do backlog. Task B-01; atualizado com
+' o código real da desenvolvimento na B-12 (VT-64) e em 22/11 (módulo avisos).
 
 title UC-S05 Registrar Embarque — Diagrama de classes (3/3): aplicativo
 
@@ -11,6 +11,8 @@ skinparam classAttributeIconSize 0
 skinparam packageStyle rectangle
 skinparam shadowing false
 hide empty members
+' Camadas da esquerda para a direita: o diagrama fica legível numa página.
+left to right direction
 
 ' ===================================================================
 package "embarque :: apresentação" as app_apr {
@@ -210,16 +212,77 @@ note bottom of app_login
   então o login não importa esses módulos.
 end note
 
-package "avisos :: apresentação (PENDENTE: C-06 e C-07)" as app_avisos {
-  class TelaAvisos <<StatelessWidget>> {
+' ===================================================================
+' Módulo avisos: UC-I02 do lado do responsável (C-06, C-07).
+package "avisos :: apresentação" as app_avisos_apr {
+  class TelaAvisos <<StatefulWidget>> {
     + usuario : UsuarioLogado {readOnly}
+  }
+  class EscopoAvisos <<InheritedWidget>> {
+    + service : AvisosService {readOnly}
+    + {static} of(context : BuildContext) : AvisosService
   }
 }
 
-note bottom of app_avisos
-  Hoje é a tela provisória da D-03. As classes da
-  tela "Avisos" (polling a cada ~10 s, marcar como
-  lido) entram quando a C-06 e a C-07 forem mergeadas.
+note bottom of app_avisos_apr
+  Atualiza a cada ~10 s (Timer.periodic) e mostra
+  "Atualizado há X s"; sem conexão, mantém os avisos
+  e mostra a faixa (RNF-003); marca como lidos os
+  avisos exibidos. Card por aluno: "Na van desde
+  HH:MM" ou "Aguardando embarque".
+end note
+
+package "avisos :: aplicação" as app_avisos_apl {
+  class AvisosService {
+    - remoto : AvisosRemoto
+    - agora : DateTime Function()
+    + carregar() : Future<AvisosDoDia>
+    + marcarComoLida(notificacaoId : int) : Future<void>
+    + agora() : DateTime
+  }
+  class AvisosDoDia {
+    + alunos : List<AlunoDoResponsavel> {readOnly}
+    + avisos : List<Aviso> {readOnly}
+    + embarquesPorAluno : Map<int, DateTime> {readOnly}
+    + consultadoEm : DateTime {readOnly}
+  }
+}
+
+package "avisos :: domínio" as app_avisos_dom {
+  class Aviso {
+    + id : int {readOnly}
+    + alunoId : int {readOnly}
+    + tipo : String {readOnly}
+    + mensagem : String {readOnly}
+    + dataHora : DateTime {readOnly}
+    + lida : bool {readOnly}
+    + deEmbarque : bool
+  }
+  class AlunoDoResponsavel {
+    + id : int {readOnly}
+    + nome : String {readOnly}
+  }
+  interface AvisosRemoto <<contrato>> {
+    + listarAlunos() : Future<List<AlunoDoResponsavel>>
+    + listarAvisos() : Future<List<Aviso>>
+    + marcarComoLida(notificacaoId : int) : Future<void>
+  }
+}
+
+note bottom of app_avisos_dom
+  aviso.dart também tem horarioEmBrasilia(dataHora),
+  usado para mostrar HH:MM em UTC-3.
+end note
+
+package "avisos :: infraestrutura" as app_avisos_inf {
+  class AvisosApi {
+    - api : ApiClient
+  }
+}
+
+note bottom of app_avisos_inf
+  GET /alunos, GET /notificacoes e
+  PATCH /notificacoes/{id}/lida.
 end note
 
 ' ===================================================================
@@ -307,6 +370,19 @@ ApiClient --> "0..1" DadosMock
 Sessao --> "0..1" UsuarioLogado
 UsuarioLogado --> Papel
 TelaAvisos --> UsuarioLogado
+
+' Avisos: apresentação -> aplicação -> domínio <- infraestrutura
+TelaAvisos ..> EscopoAvisos : <<obtém o service>>
+EscopoAvisos --> "1" AvisosService
+TelaAvisos ..> AvisosDoDia
+AvisosService --> "1" AvisosRemoto
+AvisosService ..> AvisosDoDia : <<cria>>
+AvisosDoDia --> "0..*" Aviso
+AvisosDoDia --> "0..*" AlunoDoResponsavel
+AvisosRemoto ..> Aviso
+AvisosRemoto ..> AlunoDoResponsavel
+AvisosApi ..|> AvisosRemoto
+AvisosApi --> "1" ApiClient
 
 note right of ModuloEmbarqueComFila
   Fluxo A1 (RNF-006):
