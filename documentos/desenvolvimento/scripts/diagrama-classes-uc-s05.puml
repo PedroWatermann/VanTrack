@@ -161,6 +161,13 @@ package "rota :: domínio" as rota_dom {
     + estaConfirmada() : bool
     + registrarEmbarque(registroId : String, dataHora : DateTime, localizacao : Localizacao?) : Embarque
   }
+  note left of Presenca
+    registrarEmbarque (RN-010):
+    só se situacao = CONFIRMADO;
+    muda para EMBARCADO e cria o Embarque.
+    Senão lança EmbarqueNaoPermitidoException
+    (vira HTTP 409).
+  end note
 
   class Embarque {
     + id : int? {readOnly}
@@ -264,13 +271,6 @@ Rota --> Trajeto
 PontoParada *-- Localizacao
 Embarque *-- Localizacao
 
-note right of Presenca
-  registrarEmbarque (RN-010):
-  só se situacao = CONFIRMADO;
-  muda para EMBARCADO e cria o Embarque.
-  Senão lança EmbarqueNaoPermitidoException
-  (vira HTTP 409).
-end note
 
 note bottom of Embarque
   registroId: UUID gerado no aparelho

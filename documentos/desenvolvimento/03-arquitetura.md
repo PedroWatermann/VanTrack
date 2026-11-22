@@ -26,8 +26,11 @@ REGRAS DE NEGÓCIO -> REQUISITOS -> CASO DE USO -> DIAGRAMA DE SEQUÊNCIA
 > **B-12:** este documento e os três diagramas foram conferidos com o código da
 > `desenvolvimento` em 18/11 (Dia 5). **Bug VT-71 (20/11):** o login foi para o módulo
 > `autenticacao/`, o `Papel` e o `UsuarioLogado` ficaram em `compartilhado/` e a VT-70
-> (`GET /alunos`) entrou nos diagramas. O que ainda difere está na seção 8: a tela
-> "Avisos" (ponto 19, pendente da C-06 e da C-07).
+> (`GET /alunos`) entrou nos diagramas. **22/11:** o módulo `avisos/` do app (C-06 e
+> C-07) entrou no diagrama 3 e na árvore, e os três diagramas ganharam as imagens PNG
+> (seção 2). Conferência final com a `desenvolvimento` integrada: todas as classes dos
+> diagramas existem no código e todas as classes públicas do código estão nos diagramas
+> (exceto o `VanTrackApp` do `main.dart`, que é só a composição).
 
 ---
 
@@ -176,7 +179,11 @@ As mensagens dos diagramas de sequência viraram operações com o mesmo nome se
 | `LocalizadorGeolocator` | infraestrutura | `Localizador` com `geolocator` | — | `obterLocalizacao(limite)` |
 | `TelaLogin` | apresentação (login), apoio | Lista os usuários e entra com um toque; abre a tela do motorista ou do responsável recebida do `main.dart` | loginService, telaDoMotorista, telaDoResponsavel | — |
 | `LoginService`, `LoginException` | aplicação (login), apoio | `GET /usuarios` e `POST /login`, guardando o token na `Sessao` | api, sessao | `listarUsuarios()`, `entrar(usuario)` |
-| `TelaAvisos` | apresentação (avisos) | **Provisória** (D-03). A tela real é da C-06 e da C-07 (ponto 19) | usuario | — |
+| `TelaAvisos`, `EscopoAvisos` | apresentação (avisos) | Tela "Avisos" do responsável (UC-I02): card por aluno ("Na van desde HH:MM" ou "Aguardando embarque"), lista do dia, atualização a cada ~10 s, faixa sem conexão (RNF-003) e marcar como lido. O `EscopoAvisos` (InheritedWidget) entrega o `AvisosService` à tela (C-06, C-07) | usuario; service | `EscopoAvisos.of(context)` |
+| `AvisosService`, `AvisosDoDia` | aplicação (avisos) | Carregar os alunos e os avisos **de hoje** (data de Brasília), do mais novo para o mais antigo, e a hora de embarque de cada aluno; marcar como lido | remoto, agora (injetável) | `carregar()`, `marcarComoLida(notificacaoId)` |
+| `Aviso`, `AlunoDoResponsavel` | domínio (avisos) | Um aviso (`GET /notificacoes`) e um aluno do responsável (`GET /alunos`); `horarioEmBrasilia(dataHora)` para mostrar HH:MM | id, alunoId, tipo, mensagem, dataHora, lida; id, nome | `deEmbarque` |
+| `AvisosRemoto` | domínio (contrato, avisos) | Falar com a API de avisos | — | `listarAlunos()`, `listarAvisos()`, `marcarComoLida(notificacaoId)` |
+| `AvisosApi` | infraestrutura (avisos) | `AvisosRemoto` sobre o `ApiClient` | api | as do contrato |
 | `ApiClient`, `RespostaApi` | infraestrutura (compartilhado), apoio | Cliente HTTP com `API_URL`, o token da `Sessao` e o modo mock | baseUrl, sessao, mock | `get`, `post`, `patch` |
 | `Sessao`, `UsuarioLogado`, `Papel` | aplicação (compartilhado), apoio | Quem está logado no app e o token | usuario, token | `entrar(usuario, token)`, `sair()` |
 | `Config`, `CoresApp`, `DadosMock` | apoio | `--dart-define` (`API_URL`, `USE_MOCK`), as cores do app e as respostas simuladas da seção 3 | — | — |
@@ -187,14 +194,39 @@ As mensagens dos diagramas de sequência viraram operações com o mesmo nome se
 
 Os diagramas estão em PlantUML. Como o diagrama completo fica grande, ele foi dividido em três:
 
-| # | Arquivo | Conteúdo |
-|---|---|---|
-| 1 | [`scripts/diagrama-classes-uc-s05.puml`](scripts/diagrama-classes-uc-s05.puml) | **Domínio do back-end**: entidades, enums, value objects e contratos de repositório, com atributos, operações, relacionamentos e multiplicidades |
-| 2 | [`scripts/diagrama-classes-uc-s05-backend.puml`](scripts/diagrama-classes-uc-s05-backend.puml) | **Camadas do back-end**: controllers, services, contrato `NotificacaoService` e implementações Postgres que realizam os contratos |
-| 3 | [`scripts/diagrama-classes-uc-s05-app.puml`](scripts/diagrama-classes-uc-s05-app.puml) | **App Flutter**: `TelaRotaDoDia`, contrato `ModuloEmbarque` e as suas duas implementações, `ArmazenamentoLocal` e os contratos usados nos testes; desde a B-12 também o login, o compartilhado e a tela "Avisos" (marcada como pendente) |
+| # | Fonte (PlantUML) | Imagem | Conteúdo |
+|---|---|---|---|
+| 1 | [`scripts/diagrama-classes-uc-s05.puml`](scripts/diagrama-classes-uc-s05.puml) | [PNG](imagens/diagrama-classes-uc-s05.png) · [SVG](imagens/diagrama-classes-uc-s05.svg) | **Domínio do back-end**: entidades, enums, value objects e contratos de repositório, com atributos, operações, relacionamentos e multiplicidades |
+| 2 | [`scripts/diagrama-classes-uc-s05-backend.puml`](scripts/diagrama-classes-uc-s05-backend.puml) | [PNG](imagens/diagrama-classes-uc-s05-backend.png) · [SVG](imagens/diagrama-classes-uc-s05-backend.svg) | **Camadas do back-end**: controllers, services, contrato `NotificacaoService` e implementações Postgres que realizam os contratos; login e `GET /alunos` |
+| 3 | [`scripts/diagrama-classes-uc-s05-app.puml`](scripts/diagrama-classes-uc-s05-app.puml) | [PNG](imagens/diagrama-classes-uc-s05-app.png) · [SVG](imagens/diagrama-classes-uc-s05-app.svg) | **App Flutter**: `TelaRotaDoDia`, contrato `ModuloEmbarque` e as suas duas implementações, `ArmazenamentoLocal` e os contratos usados nos testes; o módulo `avisos/` (tela "Avisos"), o login e o compartilhado |
 
-Para gerar as imagens, use a extensão PlantUML do VS Code ou
-`java -jar plantuml.jar documentos/desenvolvimento/scripts/*.puml`.
+O **SVG** é vetorial: abra no navegador para ampliar sem perder a nitidez. O **PNG** serve para
+colar em documentos e slides.
+
+**Diagrama 1 — domínio do back-end**
+
+![Diagrama de classes 1: domínio do back-end](imagens/diagrama-classes-uc-s05.svg)
+
+**Diagrama 2 — camadas do back-end**
+
+![Diagrama de classes 2: camadas do back-end](imagens/diagrama-classes-uc-s05-backend.svg)
+
+**Diagrama 3 — aplicativo**
+
+![Diagrama de classes 3: aplicativo](imagens/diagrama-classes-uc-s05-app.svg)
+
+**Como gerar as imagens de novo** (depois de mudar um `.puml`): precisa de Java e do
+[`plantuml.jar`](https://github.com/plantuml/plantuml/releases) (versão usada: 1.2026.10). O
+layout Smetana dispensa o Graphviz, e o limite de tamanho maior evita que a imagem saia
+cortada em 4096 px. Rodando dentro de `documentos/desenvolvimento/scripts/`:
+
+```bash
+java -DPLANTUML_LIMIT_SIZE=20000 -jar plantuml.jar -charset UTF-8 -Playout=smetana -tpng -o ../imagens *.puml
+```
+
+```bash
+java -DPLANTUML_LIMIT_SIZE=20000 -jar plantuml.jar -charset UTF-8 -Playout=smetana -tsvg -o ../imagens *.puml
+```
 
 ### 2.1 Convenções usadas
 
@@ -305,10 +337,10 @@ entity → database/sistema externo), agora com nomes de camada:
 
 | Camada | Responsabilidade | Back-end (Dart Frog) | App (Flutter) |
 |---|---|---|---|
-| **Apresentação** | Receber a ação do usuário ou a requisição HTTP e devolver a resposta. Converte formatos (JSON, widgets) e erros em códigos/mensagens. **Sem regra de negócio** | arquivos de `routes/`, `EmbarqueController`, `NotificacaoController`, `AlunoController`, `AutenticacaoController`, `AutenticacaoMiddleware`, `UsuarioLogado`, CORS | `TelaRotaDoDia`, `FaixaSemConexao`, `TelaLogin`, `TelaAvisos`, `CoresApp` |
-| **Aplicação** | Coordenar o caso de uso: chamar os repositórios e as entidades na ordem do fluxo, validar acesso e acionar o `<<include>>`. Não sabe nada de HTTP, SQL ou widgets | `EmbarqueService`, `ResultadoRegistro`, `NotificacaoService` (contrato), `NotificacaoServiceVazio`, `NotificacaoServicePadrao`, `AvisosService`, `AlunoService`, `AutenticacaoService`, `AcessoNegadoException`, `NaoEncontradoException` | `ModuloEmbarque` e seus tipos, `ModuloEmbarqueOnline`, `ModuloEmbarqueComFila`, `RotaDoDiaService`, `LoginService`, `Sessao` do app |
-| **Domínio** | As regras que pertencem ao próprio conceito (RN-010, RN-012, RN-002) e os **contratos** dos repositórios. Dart puro | entidades, value objects, enums e exceções de `cadastro`, `rota` e `notificacao`; `HorarioBrasilia`; contratos `PresencaRepository`, `RotaRepository`, `VinculoRepository`, `NotificacaoRepository`, `SessaoRepository`, `UsuarioRepository` | `AlunoDaRota`, `RotaDoDia`, `RegistroEmbarque`, `Localizacao`, `EnvioRecusadoException`, `SemConexaoException`; contratos `EmbarqueRemoto`, `FilaEmbarques`, `Conectividade`, `Localizador` |
-| **Infraestrutura** | Falar com o mundo de fora: banco, `.env`, HTTP, armazenamento do aparelho, GPS e rede. **Implementa** os contratos do domínio | `ConexaoBanco`, `lerDatabaseUrl()` (`ambiente.dart`), `PresencaRepositoryPostgres`, `RotaRepositoryPostgres`, `VinculoRepositoryPostgres`, `NotificacaoRepositoryPostgres`, `SessaoRepositoryPostgres` | `ApiClient`, `RespostaApi`, `Config`, `EmbarqueApi`, `ArmazenamentoLocal`, `MonitorConectividade`, `LocalizadorGeolocator`, `DadosMock` |
+| **Apresentação** | Receber a ação do usuário ou a requisição HTTP e devolver a resposta. Converte formatos (JSON, widgets) e erros em códigos/mensagens. **Sem regra de negócio** | arquivos de `routes/`, `EmbarqueController`, `NotificacaoController`, `AlunoController`, `AutenticacaoController`, `AutenticacaoMiddleware`, `UsuarioLogado`, CORS | `TelaRotaDoDia`, `FaixaSemConexao`, `TelaLogin`, `TelaAvisos`, `EscopoAvisos`, `CoresApp` |
+| **Aplicação** | Coordenar o caso de uso: chamar os repositórios e as entidades na ordem do fluxo, validar acesso e acionar o `<<include>>`. Não sabe nada de HTTP, SQL ou widgets | `EmbarqueService`, `ResultadoRegistro`, `NotificacaoService` (contrato), `NotificacaoServiceVazio`, `NotificacaoServicePadrao`, `AvisosService`, `AlunoService`, `AutenticacaoService`, `AcessoNegadoException`, `NaoEncontradoException` | `ModuloEmbarque` e seus tipos, `ModuloEmbarqueOnline`, `ModuloEmbarqueComFila`, `RotaDoDiaService`, `AvisosService`, `AvisosDoDia`, `LoginService`, `Sessao` do app |
+| **Domínio** | As regras que pertencem ao próprio conceito (RN-010, RN-012, RN-002) e os **contratos** dos repositórios. Dart puro | entidades, value objects, enums e exceções de `cadastro`, `rota` e `notificacao`; `HorarioBrasilia`; contratos `PresencaRepository`, `RotaRepository`, `VinculoRepository`, `NotificacaoRepository`, `SessaoRepository`, `UsuarioRepository` | `AlunoDaRota`, `RotaDoDia`, `RegistroEmbarque`, `Localizacao`, `EnvioRecusadoException`, `SemConexaoException`; contratos `EmbarqueRemoto`, `FilaEmbarques`, `Conectividade`, `Localizador`; `Aviso`, `AlunoDoResponsavel` e o contrato `AvisosRemoto` |
+| **Infraestrutura** | Falar com o mundo de fora: banco, `.env`, HTTP, armazenamento do aparelho, GPS e rede. **Implementa** os contratos do domínio | `ConexaoBanco`, `lerDatabaseUrl()` (`ambiente.dart`), `PresencaRepositoryPostgres`, `RotaRepositoryPostgres`, `VinculoRepositoryPostgres`, `NotificacaoRepositoryPostgres`, `SessaoRepositoryPostgres` | `ApiClient`, `RespostaApi`, `Config`, `EmbarqueApi`, `ArmazenamentoLocal`, `MonitorConectividade`, `LocalizadorGeolocator`, `AvisosApi`, `DadosMock` |
 
 Existe ainda um ponto de **composição** em cada lado: o único lugar que conhece ao mesmo tempo
 o contrato e a implementação, e liga um ao outro.
@@ -595,15 +627,27 @@ app/
 │   │       ├── localizador_geolocator.dart # limite de 2 s (D-04)
 │   │       ├── armazenamento_local.dart    # FilaEmbarques em shared_preferences (E-01)
 │   │       └── monitor_conectividade.dart  # connectivity_plus + ValueNotifier<bool> (E-02)
-│   └── avisos/                   # UC-I02 do lado do responsável
-│       └── apresentacao/
-│           └── tela_avisos.dart            # PROVISÓRIA (D-03); a tela real é da C-06 e da C-07 (ponto 19)
+│   └── avisos/                   # UC-I02 do lado do responsável (C-06, C-07)
+│       ├── apresentacao/
+│       │   └── tela_avisos.dart            # TelaAvisos (polling ~10 s, sem conexão, marcar como lido) e EscopoAvisos
+│       ├── aplicacao/
+│       │   └── avisos_service.dart         # AvisosService e AvisosDoDia: avisos de hoje (Brasília) e embarque por aluno
+│       ├── dominio/
+│       │   ├── aviso.dart                  # Aviso e horarioEmBrasilia
+│       │   ├── aluno_do_responsavel.dart   # AlunoDoResponsavel (GET /alunos)
+│       │   └── avisos_remoto.dart          # contrato AvisosRemoto
+│       └── infraestrutura/
+│           └── avisos_api.dart             # AvisosRemoto sobre o ApiClient
 └── test/                         # espelha lib/
     ├── compartilhado/            dados_mock_test.dart
     ├── login/apresentacao/       tela_login_test.dart
-    └── embarque/                 aplicacao/ (modulo_embarque_online, modulo_embarque_com_fila);
-                                  apresentacao/ (tela_rota_do_dia, tela_rota_do_dia_embarque, faixa_sem_conexao);
-                                  infraestrutura/ (armazenamento_local, embarque_api, monitor_conectividade)
+    ├── avisos/apresentacao/      tela_avisos_test.dart (C-06, C-07)
+    ├── embarque/                 aplicacao/ (modulo_embarque_online, modulo_embarque_com_fila);
+    │                             apresentacao/ (tela_rota_do_dia, tela_rota_do_dia_embarque,
+    │                             tela_rota_do_dia_widget [D-08], faixa_sem_conexao);
+    │                             infraestrutura/ (armazenamento_local, embarque_api, monitor_conectividade)
+    ├── integracao/               contrato_servidor_motorista_test.dart (D-07: o app contra respostas no formato do servidor)
+    └── widget_test.dart          o app abre na tela de login
 ```
 
 Regras entre os módulos do app: `login`, `embarque` e `avisos` importam `compartilhado` e **não
@@ -701,7 +745,7 @@ e `documentos/atividade-04/` do repositório do 1º bimestre) até as classes e 
 | **RN-002** Responsável só vê os alunos sob sua responsabilidade | RF-011 | UC-I02 passos 1 e 3 | `buscarResponsaveis(aluno)` | `VinculoRepository.buscarResponsaveis`; `NotificacaoServicePadrao.notificarMovimentacao` (notifica só esses); `Notificacao.pertenceA`; `AvisosService.listarDoResponsavel` e `marcarComoLida` | Teste da C-05 (outra família não vê nem marca); aceitação 4 |
 | **RN-009** Menor tem ao menos um responsável; maior pode não ter | RF-011 | UC-I02 passo 1 e A1 (aluno maior sem responsável) | `buscarResponsaveis(aluno)`; "nenhuma notificação é enviada" | `Aluno.ehMenorDeIdade`; `VinculoRepository.buscarResponsaveis` (lista vazia); `NotificacaoServicePadrao` (A1: não cria nada e retorna) | Testes da C-04 (Ana → 2, Carlos → 0); aceitação 5 |
 | **RF-009** Registrar embarque com data, horário e localização | — | UC-S05 passos 2 a 4; UC-R02 passos 3 e 4 | `confirmarEmbarque(alunoId)`, `registrarEmbarque(...)`, `salvar(presenca)` | `TelaRotaDoDia.confirmarEmbarque` → `ModuloEmbarque.registrarEmbarque` → `POST /rotas/{rotaId}/embarques` → `EmbarqueController.registrarEmbarque` → **`EmbarqueService.registrarEmbarque`** → `Presenca.registrarEmbarque` → `PresencaRepository.salvar`; `Embarque` (dataHora do toque, localização opcional) | Testes da B-10 (dataHora salva é a enviada); aceitação 2 |
-| **RF-011** Notificar o responsável sobre o embarque | — | UC-S05 passo 5 → UC-I02 passos 1 a 4 | `notificarMovimentacao(presenca, tipo)`, `montarMensagem`, `registrarComunicado(evento)` | **`NotificacaoService.notificarMovimentacao`** (`NotificacaoServicePadrao`); `Notificacao.deEmbarque`; `NotificacaoRepository.registrarComunicado`; `GET /notificacoes` → `NotificacaoController.listar` → `AvisosService.listarDoResponsavel`; ligado ao `EmbarqueService` no `routes/_middleware.dart` (B-11); tela "Avisos" com polling ~10 s (C-06/C-07, pendente: ponto 19) | `notificacao_test.dart` (hora em UTC-3), `notificacao_service_padrao_test.dart`, `embarque_notificacao_postgres_test.dart` (Ana → 2, Carlos → 0, com banco); aceitação 3 |
+| **RF-011** Notificar o responsável sobre o embarque | — | UC-S05 passo 5 → UC-I02 passos 1 a 4 | `notificarMovimentacao(presenca, tipo)`, `montarMensagem`, `registrarComunicado(evento)` | **`NotificacaoService.notificarMovimentacao`** (`NotificacaoServicePadrao`); `Notificacao.deEmbarque`; `NotificacaoRepository.registrarComunicado`; `GET /notificacoes` → `NotificacaoController.listar` → `AvisosService.listarDoResponsavel`; ligado ao `EmbarqueService` no `routes/_middleware.dart` (B-11); no app, `TelaAvisos` → `AvisosService.carregar` → `AvisosRemoto`/`AvisosApi` (`GET /notificacoes`, `GET /alunos`), com polling ~10 s (C-06, C-07) | `notificacao_test.dart` (hora em UTC-3), `notificacao_service_padrao_test.dart`, `avisos_service_test.dart`, `embarque_notificacao_postgres_test.dart` (Ana → 2, Carlos → 0, com banco); no app, `tela_avisos_test.dart`; aceitação 3 |
 | **RNF-005** Ações do motorista com uma única ação principal | RF-009 | UC-R02 passo 3 (toque no botão "Embarcou") | `confirmarEmbarque(alunoId)` | `TelaRotaDoDia` (um toque, sem diálogo, botão ≥ 56); `ModuloEmbarque.registrarEmbarque` (uma chamada); `Localizador.obterLocalizacao(2 s)` (o toque nunca espera o GPS) | Testes da D-08; aceitação 2 |
 | **RNF-006** Check-ins offline sincronizados em até 5 min | RF-009 | UC-S05 A1; UC-R02 E1 | `guardar(registroEmbarque)`, `sincronizar(registros)` | **`ModuloEmbarqueComFila`** (`registrarEmbarque`, `sincronizar`); `FilaEmbarques` / `ArmazenamentoLocal`; `Conectividade` / `MonitorConectividade`; `EmbarqueRemoto.sincronizar` → `EmbarqueController.sincronizar` → `EmbarqueService.registrarEmbarque`; idempotência: `Embarque.registroId`, `PresencaRepository.buscarPorRegistroId`, `EmbarqueDuplicadoException`, `ResultadoRegistro.jaProcessado` | Testes da E-06 e da B-10 (mesmo `registroId` → 1 embarque, 1 notificação); aceitação 8, 9 e 10 |
 
@@ -758,7 +802,7 @@ do Membro B e seguem para a revisão da equipe no fim do Dia 1.
 | 16 | ~~Bibliotecas do app (B-02)~~ **Resolvido.** O `material_ui` saiu do `app/pubspec.yaml` e o `mocktail` entrou nos `dev_dependencies` | — | Membro D |
 | 17 | ~~Classes do código que não estão no diagrama (B-02)~~ **Resolvido na B-12.** `UsuarioRepository`, `AutenticacaoService`, `AutenticacaoController`, o login e o compartilhado do app entraram nos diagramas com os nomes reais | A tela "Avisos" continua no ponto 19 | Membro B (B-12) |
 | 18 | **RN-012 fora da cadeia do UC-S05 no 1º bimestre (B-03).** Em `atividade-02/04-rastreabilidade.md` a RN-012 só aponta para RF-002, RF-007, RF-012 e RF-014. O UC-S05 cita só a RN-010, e a sequência `UC-S05.puml` não mostra a validação do motorista. Mas o UC-S05 depende dela: só o motorista ativo da van registra (403) | Aqui a cadeia foi completada (seção 7.1). Atualizar a rastreabilidade, as regras do UC-S05 (RN-010, **RN-012**) e incluir `validarMotoristaAtivo` na sequência ("melhorias em todo o projeto") | Membro E (E-07) |
-| 19 | **Tela "Avisos" pendente (B-12).** No app, `avisos/` só tem a `TelaAvisos` provisória da D-03. A tela real (cards por aluno, lista do dia, polling ~10 s, faixa sem conexão, marcar como lido) é da C-06 e da C-07, que ainda não foram mergeadas. Os testes de aceitação 3, 4 e 5 dependem dela | No Diagrama 3 a tela aparece marcada como **PENDENTE**. Quando a C-06 e a C-07 entrarem, as classes reais entram no diagrama e na árvore da seção 4.3 | Membro C (C-06, C-07); Membro B complementa o diagrama |
+| 19 | ~~Tela "Avisos" pendente (B-12)~~ **Resolvido em 22/11.** A C-06 e a C-07 foram mergeadas (PR #46) com o módulo `avisos/` em quatro camadas | `TelaAvisos`, `EscopoAvisos`, `AvisosService`, `AvisosDoDia`, `Aviso`, `AlunoDoResponsavel`, `AvisosRemoto` e `AvisosApi` entraram no Diagrama 3, nas tabelas das seções 1.3 e 3.1 e na árvore da seção 4.3 | Membro B |
 | 20 | ~~Notificação que falha depois de salvar o embarque (B-10)~~ **Decidido na B-11.** Se o aviso falha, o embarque continua 201 e o erro vai para o log | Decisão 11 da seção 5; teste em `embarque_service_test.dart` | Membro B |
 | 21 | **Código sem uso no app (B-12).** `MonitorConectividade.monitorarChamada` só é chamado nos testes: o `ModuloEmbarqueComFila` informa a rede com `registrarFalhaDeRede`/`registrarSucessoDeRede`, o timeout de 5 s fica no `ApiClient` e o `EmbarqueApi` converte timeout e erro de rede em `SemConexaoException` | Manter (está documentado no diagrama) ou remover numa task do Membro E | Membro E |
 | 22 | ~~Teste de aceitação 7: motorista sem vínculo via 404 no `GET /rotas/hoje`~~ **Decidido: Bug.** O app mostrava "Você não tem rota para hoje.", e o backlog espera acesso negado (RN-012) | O `EmbarqueService.buscarRotaDoDia` confere antes o vínculo ativo do motorista (`VinculoRepository.buscarVinculoAtivoDoMotorista`): sem vínculo → **403** (o app já mostra "Você não é o motorista ativo desta van."); com vínculo e sem rota hoje → 404. Contrato da seção 8.1 atualizado; o mock do app segue o servidor | Membro B (Bug) |
