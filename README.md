@@ -10,6 +10,7 @@ Software (UEM). Esta entrega implementa o caso de uso **UC-S05 Registrar Embarqu
 | `app/` | App Flutter (motorista e responsável) | [app/README.md](app/README.md) |
 | `supabase/` | Migrations e dados de teste (seed) do PostgreSQL | rodam pelo reset do backend |
 | `documentos/desenvolvimento/` | Arquitetura e diagrama de classes do UC-S05 | [03-arquitetura.md](documentos/desenvolvimento/03-arquitetura.md) |
+| `documentos/revisao-1-bimestre/` | Artefatos do 1º bimestre revisados conforme a implementação (E-07 / VT-65) | [revisao-1-bimestre/README.md](documentos/revisao-1-bimestre/README.md) |
 
 O Supabase é usado **só como banco PostgreSQL**: o app fala apenas com a API, e a API fala
 com o banco.

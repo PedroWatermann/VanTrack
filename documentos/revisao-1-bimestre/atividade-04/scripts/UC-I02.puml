@@ -1,0 +1,39 @@
+@startuml UC-I02
+title UC-I02 — Notificar Responsável sobre Embarque/Desembarque (Revisado — E-07 / VT-65)
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+autonumber
+
+participant "EmbarqueService\n(UC-S05 / UC-S06)" as ES
+participant "NotificacaoServicePadrao" as S
+database "VinculoRepository" as VRepo
+entity "Notificacao" as N
+database "NotificacaoRepository" as NRepo
+boundary "TelaAvisos" as Tela
+actor "Responsável" as R
+
+note over ES : Gatilho: embarque (UC-S05) ou desembarque (UC-S06) salvo
+
+ES -> S : notificarMovimentacao(presenca, tipo)
+S -> VRepo : buscarResponsaveis(presenca.aluno.id) (RN-002, RN-009)
+VRepo --> S : responsáveis vinculados
+
+alt Caminho de sucesso — há responsável vinculado
+    loop para cada responsável
+        S -> N : deEmbarque(destinatario, aluno, embarque.dataHora)
+        N -> N : formata hora original do embarque\nem UTC-3 (HorarioBrasilia)
+    end
+    S -> NRepo : registrarComunicado(notificacoes)
+    NRepo --> S : comunicado gravado
+
+    ... consulta periódica (polling ~10 s) ...
+
+    Tela -> NRepo : GET /notificacoes (AvisosService.listarDoResponsavel)
+    NRepo --> Tela : avisos do responsável (RN-002)
+    Tela --> R : exibe "<aluno> embarcou na van às HH:MM."
+else A1 — Aluno maior sem responsável vinculado (RN-009)
+    S -> S : nenhuma notificação é enviada
+end
+
+S --> ES : retorno ao caso de uso base
+@enduml

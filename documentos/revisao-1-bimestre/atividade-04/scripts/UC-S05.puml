@@ -1,0 +1,92 @@
+@startuml UC-S05
+title UC-S05 — Registrar Embarque (Revisado — E-07 / VT-65)
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+autonumber
+
+actor "Motorista" as M
+boundary "TelaRotaDoDia" as T
+participant "ModuloEmbarqueComFila" as Mod
+participant "ArmazenamentoLocal\n(dispositivo)" as Local
+control "EmbarqueController" as C
+participant "EmbarqueService" as S
+database "RotaRepository" as RRepo
+database "VinculoRepository" as VRepo
+entity "Presenca" as P
+database "PresencaRepository" as PRepo
+
+M -> T : abre "Rota do dia" (buscarRotaDoDia)
+T -> C : GET /rotas/hoje
+C -> S : buscarRotaDoDia(motoristaId)
+S -> VRepo : buscarVinculoAtivoDoMotorista(motoristaId) (RN-012)
+alt Sem vínculo ativo com van (RN-012)
+    VRepo --> S : nulo
+    S --> C : AcessoNegadoException (403)
+    C --> T : 403 "Você não é o motorista ativo desta van."
+    T --> M : exibe acesso negado
+else Vínculo ativo válido
+    VRepo --> S : vínculo ativo
+    S -> RRepo : buscarDoMotorista(motoristaId, hoje)
+    RRepo --> S : Rota
+    S --> C : RotaDoDia
+    C --> T : RotaDoDia
+
+    T -> C : abrirRota(rotaId) -> GET /rotas/{rotaId}/alunos
+    C -> S : listarAlunosConfirmados(rotaId, motoristaId)
+    S -> RRepo : buscarPorId(rotaId)
+    RRepo --> S : Rota
+    S -> VRepo : buscarVinculoAtivo(rota.vanId) / autoriza(motoristaId) (RN-012)
+    S -> PRepo : buscarConfirmados(rotaId)
+    PRepo --> S : alunos confirmados (ausentes não entram — RN-010)
+    S --> C : alunos na ordem da rota
+    C --> T : alunos na ordem da rota
+    T --> M : exibe os alunos confirmados
+end
+
+M -> T : confirmarEmbarque(alunoId) (um toque — RNF-005)
+T -> Mod : registrarEmbarque(rotaId, alunoId)
+Mod -> Mod : captura dataHora, localizacao? (GPS até 2 s) e gera registroId (UUID)
+
+alt Caminho de sucesso — com conectividade
+    Mod -> C : POST /rotas/{rotaId}/embarques (registroId, alunoId, dataHora, localizacao?)
+    C -> S : registrarEmbarque(rotaId, alunoId, registroId, dataHora, motoristaId, localizacao?)
+    S -> RRepo : buscarPorId(rotaId) (404 se não existir)
+    S -> VRepo : buscarVinculoAtivo(rota.vanId) + autoriza(motoristaId) (RN-012 -> 403 se inválido)
+    S -> PRepo : buscarPorRegistroId(registroId) (RNF-006: se achar, devolve 200 idempotente)
+    S -> PRepo : buscarPresenca(alunoId, rotaId) (404 se não existir)
+    PRepo --> S : Presenca
+    S -> P : registrarEmbarque(registroId, dataHora, localizacao?) (RN-010 -> 409 se não CONFIRMADO)
+    S -> PRepo : salvar(presenca) (presença + embarque em 1 transação)
+    PRepo --> S : presença salva
+
+    ref over S, PRepo : «include» UC-I02 — Notificar Responsável sobre Embarque/Desembarque
+
+    S --> C : ResultadoRegistro (201 ou 200)
+    C --> Mod : embarque registrado
+    Mod --> T : ResultadoEmbarque(StatusEnvio.enviado)
+    T --> M : check verde "Embarcou às HH:MM"
+else A1 — Sem conectividade ou timeout de 5 s (RNF-003, RNF-006)
+    Mod -> Local : guardar(RegistroEmbarque)
+    Mod --> T : ResultadoEmbarque(StatusEnvio.pendente)
+    T --> M : faixa "Sem conexão" + ícone âmbar "Pendente de sincronização"
+
+    ... ao reconectar / a cada 30 s / ao abrir o app ...
+
+    Mod -> Local : listar(rotaId)
+    Local --> Mod : List<RegistroEmbarque>
+    Mod -> C : POST /rotas/{rotaId}/embarques/sincronizar (registros)
+    loop para cada registro no lote
+        C -> S : registrarEmbarque(rotaId, alunoId, registroId, dataHora, motoristaId, localizacao?)
+        S -> RRepo : buscarPorId(rotaId)
+        S -> VRepo : validarMotoristaAtivo (RN-012)
+        S -> PRepo : buscarPorRegistroId(registroId) (idempotência — RNF-006)
+        S -> P : registrarEmbarque(registroId, dataHora, localizacao?) (RN-010)
+        S -> PRepo : salvar(presenca)
+        ref over S, PRepo : «include» UC-I02 (notificação usa a dataHora original do toque)
+    end
+    C --> Mod : resultados por registroId (201 / 200 / 409...)
+    Mod -> Local : remover(registroIds confirmados ou rejeitados 4xx)
+    Mod --> T : aoMudarPendentes(EventoPendente)
+    T --> M : atualiza ícone para verde sem recarregar a tela
+end
+@enduml
