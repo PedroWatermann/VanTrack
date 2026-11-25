@@ -25,9 +25,13 @@ class EscopoAvisos extends InheritedWidget {
 /// Atualiza os avisos do responsável e preserva a última consulta sem conexão
 /// (UC-I02, RF-011, RN-002, RNF-003).
 class TelaAvisos extends StatefulWidget {
-  const TelaAvisos({super.key, required this.usuario});
+  const TelaAvisos({super.key, required this.usuario, this.aoSair});
 
   final UsuarioLogado usuario;
+
+  /// Ação do botão "Sair" da barra do topo (troca de usuário). Sem ela, o
+  /// botão não aparece (Bug VT-75).
+  final VoidCallback? aoSair;
 
   @override
   State<TelaAvisos> createState() => _TelaAvisosState();
@@ -121,7 +125,17 @@ class _TelaAvisosState extends State<TelaAvisos> {
   Widget build(BuildContext context) {
     final dados = _dados;
     return Scaffold(
-      appBar: AppBar(title: const Text('Avisos')),
+      appBar: AppBar(
+        title: const Text('Avisos'),
+        actions: [
+          if (widget.aoSair != null)
+            IconButton(
+              icon: const Icon(Icons.logout),
+              tooltip: 'Sair',
+              onPressed: widget.aoSair,
+            ),
+        ],
+      ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
