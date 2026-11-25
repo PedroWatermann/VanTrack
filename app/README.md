@@ -55,6 +55,11 @@ ela abre com o último usuário que entrou em qualquer uma delas. Para acompanha
 usuários ao mesmo tempo (ex.: motorista e responsável), use uma janela anônima para o
 segundo.
 
+Os embarques pendentes (sem conexão) também ficam no aparelho, cada um com o motorista que o
+registrou: só esse motorista os vê e os sincroniza. Se outro usuário entrar no mesmo
+aparelho, os pendentes esperam o motorista voltar; uma recusa 401 ou 403 nunca os apaga
+(Bug VT-76).
+
 ## Pastas (lib/)
 
 | Pasta | O que tem | Quem cuida |

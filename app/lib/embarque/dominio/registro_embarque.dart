@@ -19,12 +19,19 @@ class RegistroEmbarque {
   /// Localização no momento do toque, quando disponível.
   final Localizacao? localizacao;
 
+  /// Motorista que tocou em "Embarcou". Fica só no aparelho (não vai no corpo
+  /// da requisição: o servidor identifica o motorista pelo token). Serve para
+  /// a fila offline só ser sincronizada com a sessão desse motorista
+  /// (Bug VT-76). Nulo em registros guardados antes dessa correção.
+  final int? motoristaId;
+
   const RegistroEmbarque({
     required this.registroId,
     required this.rotaId,
     required this.alunoId,
     required this.dataHora,
     this.localizacao,
+    this.motoristaId,
   });
 
   /// Corpo da requisição POST /rotas/{rotaId}/embarques.
@@ -51,6 +58,7 @@ class RegistroEmbarque {
       localizacao: latitude != null && longitude != null
           ? Localizacao(latitude.toDouble(), longitude.toDouble())
           : null,
+      motoristaId: json['motoristaId'] as int?,
     );
   }
 }
