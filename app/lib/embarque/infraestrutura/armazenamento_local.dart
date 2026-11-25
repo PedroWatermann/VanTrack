@@ -76,6 +76,8 @@ class ArmazenamentoLocal implements FilaEmbarques {
       for (final r in registros)
         {
           'rotaId': r.rotaId,
+          // Quem registrou: a fila só é sincronizada com a sessão dele (Bug VT-76).
+          if (r.motoristaId != null) 'motoristaId': r.motoristaId,
           ...r.paraJson(),
         },
     ];

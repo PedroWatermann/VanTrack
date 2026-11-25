@@ -43,6 +43,12 @@ Future<void> main() async {
     fila: ArmazenamentoLocal(),
     conectividade: monitorConectividade,
     localizador: LocalizadorGeolocator(),
+    // A fila é do aparelho: cada motorista só vê e sincroniza os embarques
+    // que ele registrou (Bug VT-76).
+    motoristaLogado: () {
+      final usuario = sessao.usuario;
+      return usuario?.papel == Papel.motorista ? usuario!.id : null;
+    },
   );
 
   runApp(VanTrackApp(

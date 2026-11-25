@@ -27,6 +27,12 @@ import 'modulo_embarque.dart';
 /// `connectivity_plus` avisa quando o servidor volta; sem essa tentativa, o app
 /// ficava "sem conexão" para sempre (teste 10; Bug VT-77).
 ///
+/// A fila é do aparelho, mas cada registro guarda o motorista que o fez. Com
+/// [motoristaLogado], o módulo só lista e sincroniza os registros do motorista
+/// logado, e não sincroniza nada sem motorista logado. Respostas 401 e 403 de
+/// um registro não o tiram da fila: são problemas da sessão ou do vínculo, não
+/// do embarque, e apagar faria o embarque se perder (Bug VT-76).
+///
 /// RN-010 (confirmação do embarque pelo motorista); RF-009; RNF-005 (um toque,
 /// GPS com limite de 2 s); RNF-006 (fila offline e sincronização em até 5 min).
 /// UC-S05 passo 2 e fluxo alternativo A1; UC-R02 passos 3 a 5 e E1.
@@ -36,6 +42,7 @@ class ModuloEmbarqueComFila implements ModuloEmbarque {
     required this.fila,
     required this.conectividade,
     required this.localizador,
+    this.motoristaLogado,
     Duration intervaloSincronizacao = const Duration(seconds: 30),
   }) {
     _inscricaoConectividade = conectividade.aoMudar.listen((online) {
@@ -55,6 +62,11 @@ class ModuloEmbarqueComFila implements ModuloEmbarque {
   final FilaEmbarques fila;
   final Conectividade conectividade;
   final Localizador localizador;
+
+  /// Identificador do motorista logado agora, ou nulo se não houver (ninguém
+  /// logado ou um responsável). Sem esta função, a fila não é separada por
+  /// motorista.
+  final int? Function()? motoristaLogado;
 
   /// Tempo máximo esperando a localização a cada toque (RNF-005).
   static const Duration limiteGps = Duration(seconds: 2);
@@ -93,6 +105,7 @@ class ModuloEmbarqueComFila implements ModuloEmbarque {
       alunoId: alunoId,
       dataHora: dataHora,
       localizacao: localizacao,
+      motoristaId: motoristaLogado?.call(),
     );
 
     // Fluxo A1 (RNF-006): já sabemos que está sem conexão -> guarda na fila.
@@ -135,7 +148,7 @@ class ModuloEmbarqueComFila implements ModuloEmbarque {
   @override
   Future<List<RegistroPendente>> listarPendentes(int rotaId) async {
     _rotasConhecidas.add(rotaId);
-    final pendentes = await fila.listar(rotaId);
+    final pendentes = _doMotoristaLogado(await fila.listar(rotaId));
     return [
       for (final r in pendentes)
         RegistroPendente(r.registroId, r.alunoId, r.dataHora),
@@ -155,6 +168,9 @@ class ModuloEmbarqueComFila implements ModuloEmbarque {
       _rotasConhecidas.add(rotaId);
     }
     if (_sincronizando || _dispensado) return;
+    // Bug VT-76: sem motorista logado não há com quem sincronizar; com o token
+    // de outro usuário, o servidor recusaria (401/403).
+    if (motoristaLogado != null && motoristaLogado!() == null) return;
 
     _sincronizando = true;
     try {
@@ -162,7 +178,7 @@ class ModuloEmbarqueComFila implements ModuloEmbarque {
       for (final rota in rotas) {
         if (_dispensado) break;
 
-        final pendentes = await fila.listar(rota);
+        final pendentes = _doMotoristaLogado(await fila.listar(rota));
         if (pendentes.isEmpty) continue;
 
         final Map<String, int> resultados;
@@ -187,6 +203,10 @@ class ModuloEmbarqueComFila implements ModuloEmbarque {
             eventosEmitidos.add(
               EventoPendente(registro.registroId, registro.alunoId, true),
             );
+          } else if (codigo == 401 || codigo == 403) {
+            // Bug VT-76: sessão inválida ou motorista sem vínculo ativo agora.
+            // O embarque continua na fila; nada é apagado.
+            continue;
           } else if (codigo != null && codigo >= 400 && codigo < 500) {
             paraRemover.add(registro.registroId);
             eventosEmitidos.add(
@@ -212,6 +232,19 @@ class ModuloEmbarqueComFila implements ModuloEmbarque {
     } finally {
       _sincronizando = false;
     }
+  }
+
+  /// Só os registros do motorista logado (Bug VT-76). Registros antigos, sem
+  /// motorista, valem para qualquer motorista: um 403 não os apaga mais.
+  List<RegistroEmbarque> _doMotoristaLogado(List<RegistroEmbarque> registros) {
+    final obter = motoristaLogado;
+    if (obter == null) return registros;
+    final motoristaId = obter();
+    if (motoristaId == null) return const [];
+    return [
+      for (final r in registros)
+        if (r.motoristaId == null || r.motoristaId == motoristaId) r,
+    ];
   }
 
   /// Cancela o timer e a escuta de conectividade, liberando os recursos.
