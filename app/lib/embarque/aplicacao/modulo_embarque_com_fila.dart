@@ -21,6 +21,12 @@ import 'modulo_embarque.dart';
 /// sem execuções simultâneas, removendo da fila o que o servidor confirmou ou
 /// rejeitou e notificando via [aoMudarPendentes].
 ///
+/// A tentativa a cada 30 segundos acontece **mesmo com o app marcado como sem
+/// conexão**: é ela que descobre que o servidor voltou. Na Web, uma falha de
+/// rede ou um timeout marcam o app como offline, mas nenhum evento do
+/// `connectivity_plus` avisa quando o servidor volta; sem essa tentativa, o app
+/// ficava "sem conexão" para sempre (teste 10; Bug VT-77).
+///
 /// RN-010 (confirmação do embarque pelo motorista); RF-009; RNF-005 (um toque,
 /// GPS com limite de 2 s); RNF-006 (fila offline e sincronização em até 5 min).
 /// UC-S05 passo 2 e fluxo alternativo A1; UC-R02 passos 3 a 5 e E1.
@@ -140,11 +146,15 @@ class ModuloEmbarqueComFila implements ModuloEmbarque {
   ///
   /// Nunca executa duas sincronizações simultaneamente. Em falha de rede no
   /// meio do processo, mantém os registros na fila para a próxima tentativa.
+  ///
+  /// Tenta mesmo se [conectividade] disser que está offline: o resultado da
+  /// tentativa é que atualiza o estado (Bug VT-77). Só chama o servidor se
+  /// houver pendentes; com a fila vazia, não faz nada.
   Future<void> sincronizar([int? rotaId]) async {
     if (rotaId != null) {
       _rotasConhecidas.add(rotaId);
     }
-    if (_sincronizando || _dispensado || !conectividade.estaOnline) return;
+    if (_sincronizando || _dispensado) return;
 
     _sincronizando = true;
     try {
