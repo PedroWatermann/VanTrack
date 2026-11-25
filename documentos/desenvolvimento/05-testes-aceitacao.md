@@ -14,28 +14,56 @@ ordem, do 1 ao 10, depois de um reset do banco.
 Preencha durante a execução: **Passou**, **Falhou** ou **Bloqueado** (dependência não
 mergeada), o número do bug e quem testou.
 
-| # | Cenário | Fluxo / regra | Resultado | Bug | Quem testou |
-|---|---|---|---|---|---|
-| 1 | Motorista ativo abre a rota | UC-S05 passo 1, RN-010 | Passou | | Membro A |
-| 2 | Toca "Embarcou" no aluno 1 | UC-S05 passos 2 a 4, UC-R02 | Passou | | Membro A |
-| 3 | Os 2 responsáveis do aluno 1 abrem "Avisos" | UC-I02 fluxo principal | Passou | | Membro A |
-| 4 | Responsável do aluno 2 abre "Avisos" | RN-002 | Passou | | Membro A |
-| 5 | Embarque do aluno 3 | UC-I02 A1 | Passou | (ver bug A) | Membro A |
-| 6 | Tentar embarcar o aluno 1 de novo | 409 | Passou | | Membro A |
-| 7 | Motorista sem vínculo tenta abrir a rota | RN-012 | Passou | | Membro A |
-| 8 | Sem conexão, embarcar o aluno 2 | UC-S05 A1, UC-R02 E1 | Passou | | Membro A |
-| 9 | Fechar e abrir o app ainda sem conexão | RNF-006 | Falhou | bug B | Membro A |
-| 10 | Reconectar | UC-S05 A1, RNF-006 | Falhou | bug A | Membro A |
+Foram duas execuções. Na 1ª (24/11), 8 testes passaram e apareceram 3 bugs. Depois das
+correções, a 2ª (25/11) passou nos 10. A tabela mostra as duas.
 
-Bugs A, B e C: ver [Bugs encontrados](#bugs-encontrados). Troque a letra pelo número do Jira
-quando forem criados.
+| # | Cenário | Fluxo / regra | 24/11 | 25/11 | Bug | Quem testou |
+|---|---|---|---|---|---|---|
+| 1 | Motorista ativo abre a rota | UC-S05 passo 1, RN-010 | Passou | Passou | | Membro A |
+| 2 | Toca "Embarcou" no aluno 1 | UC-S05 passos 2 a 4, UC-R02 | Passou | Passou | | Membro A |
+| 3 | Os 2 responsáveis do aluno 1 abrem "Avisos" | UC-I02 fluxo principal | Passou | Passou | | Membro A |
+| 4 | Responsável do aluno 2 abre "Avisos" | RN-002 | Passou | Passou | | Membro A |
+| 5 | Embarque do aluno 3 | UC-I02 A1 | Passou | Passou | VT-77 | Membro A |
+| 6 | Tentar embarcar o aluno 1 de novo | 409 | Passou | Passou | | Membro A |
+| 7 | Motorista sem vínculo tenta abrir a rota | RN-012 | Passou | Passou | VT-76 | Membro A |
+| 8 | Sem conexão, embarcar o aluno 2 | UC-S05 A1, UC-R02 E1 | Passou | Passou | | Membro A |
+| 9 | Fechar e abrir o app ainda sem conexão | RNF-006 | Falhou | Passou | VT-75 | Membro A |
+| 10 | Reconectar | UC-S05 A1, RNF-006 | Falhou | Passou | VT-77 | Membro A |
 
-**Execução:** 24/11/2026, das 21:10 às 21:22 · commit da `desenvolvimento` testado `32361cc`
-· banco: **projeto Supabase de desenvolvimento do Membro A** (não o vantrack-demo), com o
-reset aplicado antes · backend com `dart_frog dev` · app: Web (build de produção no
-Chrome). O Android não foi testado.
+Os bugs estão em [Bugs encontrados](#bugs-encontrados). No 5 e no 7 o teste passou, mas foi
+neles que os bugs VT-77 e VT-76 apareceram.
 
-### O que se viu em cada teste (24/11)
+**1ª execução:** 24/11/2026, das 21:10 às 21:22 · commit da `desenvolvimento` testado
+`32361cc` · banco: **projeto Supabase de desenvolvimento do Membro A** (não o
+vantrack-demo), com o reset aplicado antes · backend com `dart_frog dev` · app: Web (build
+de produção no Chrome). O Android não foi testado.
+
+**2ª execução:** 25/11/2026, das 08:11 às 08:20 · commit da `desenvolvimento` testado
+`55b7924` (com VT-75, VT-76 e VT-77) · mesmo banco, backend e app, com o reset aplicado
+antes. O Android não foi testado.
+
+### O que se viu em cada teste (25/11)
+
+| # | Observado |
+|---|---|
+| 1 | "Rota do dia · Ida · 06:30", Van ABC-1D23, "0 de 3 na van". Ana em "Próxima parada", Beatriz e Carlos em "Depois". Bruno não aparece. |
+| 2 | Toque às 08:12, sem confirmação. Ana em "Na van" com check verde e "Embarcou às 08:12". |
+| 3 | Maria e Paulo (entrando um de cada vez na mesma aba, pelo botão Sair) veem "Na van desde 08:12" e o aviso "Ana Souza embarcou na van às 08:12.". |
+| 4 | Fernanda vê só a Beatriz, "Aguardando embarque", e "Nenhum aviso hoje.", mesmo depois dos embarques da Ana e do Carlos. |
+| 5 | Carlos com check verde, "Embarcou às 08:12"; nenhum aviso dele para os responsáveis. |
+| 6 | Segunda aba aberta antes do embarque: o toque na Ana deu "Ana Souza já embarcou." no rodapé, sem duplicar. |
+| 7 | Sair e entrar como Marcos: tela inteira "Você não é o motorista ativo desta van.". |
+| 8 | Backend parado. Toque às 08:15:01 aceito na hora: Beatriz âmbar, "Pendente de sincronização", faixa "Sem conexão…". A fila guardou o registro com o motorista (`motoristaId` 1). |
+| 9 | Aba recarregada, ainda sem servidor: o app abriu direto na "Rota do dia" do João (sem login), com Ana e Carlos embarcados e a Beatriz "Pendente de sincronização" (VT-75). |
+| 10 | Backend de volta por volta das 08:16:15. Sem nenhuma ação, o app sincronizou às 08:16:39 (`POST /rotas/1/embarques/sincronizar` 200): a faixa sumiu, a Beatriz ficou verde com "Embarcou às 08:15" (hora do toque) e a tela da Fernanda mostrou "Beatriz Reis embarcou na van às 08:15." (VT-77). |
+
+**Conferência extra do VT-76** (depois de um novo reset):
+1. Sem servidor, o João registrou o Carlos (pendente) e tocou em Sair.
+2. Com o servidor de volta, entrou o Marcos ("Você não é o motorista ativo desta van.").
+3. Em 45 s com o Marcos logado, o app não enviou nada ao servidor e o pendente do João continuou na fila.
+4. O João entrou de novo: o Carlos apareceu pendente e foi sincronizado em 10 s, com a hora do toque (08:17).
+
+### O que se viu em cada teste (24/11, 1ª execução)
 
 | # | Observado |
 |---|---|
@@ -52,11 +80,14 @@ Chrome). O Android não foi testado.
 
 ## Bugs encontrados
 
-| Bug | Testes | Dono | Problema |
+Os três foram corrigidos e conferidos na 2ª execução (25/11). Nos textos abaixo, A, B e C
+são os nomes usados na 1ª execução.
+
+| Bug | Testes | Correção | Problema |
 |---|---|---|---|
-| **A** | 5, 10 | Membro E | **O app fica "sem conexão" para sempre depois de uma falha.** Um timeout ou erro de rede chama `registrarFalhaDeRede()`; o monitor só volta a online com um evento do `connectivity_plus` ou depois de um envio que deu certo. Mas o `sincronizar()` e o `registrarEmbarque()` não tentam nada enquanto está offline. Na Web (e no Android com o Wi-Fi ligado e o servidor fora do ar) o evento de rede não chega, então nada mais é enviado e o RNF-006 (até 5 min) não é cumprido. Sugestão: deixar a sincronização periódica tentar mesmo offline, ou marcar online quando qualquer chamada à API der certo. |
-| **B** | 9 | Membro D | **Sem login salvo, abrir o app sem conexão não mostra os pendentes.** O login não fica guardado e a lista de usuários vem do servidor. Sugestão: guardar a sessão (usuário e token) no aparelho e abrir direto na "Rota do dia". |
-| **C** | encontrado no 7 | Membro E | **A fila offline é do aparelho, não do motorista, e pode perder embarques.** Ao abrir o app, ele sincroniza a fila com o token de quem estiver logado: sem login (401) ou com outro usuário. Com o Marcos (sem vínculo), o servidor respondeu 403 para o registro e o app apagou o embarque pendente do João da fila. Só não houve perda porque esse embarque já estava no servidor. Sugestão: guardar na fila quem registrou e só sincronizar com a sessão desse motorista; nunca apagar por 401/403. |
+| **A = VT-77** | 5, 10 | Corrigido (PR #57): a sincronização a cada 30 s tenta mesmo com o app offline | **O app fica "sem conexão" para sempre depois de uma falha.** Um timeout ou erro de rede chama `registrarFalhaDeRede()`; o monitor só volta a online com um evento do `connectivity_plus` ou depois de um envio que deu certo. Mas o `sincronizar()` e o `registrarEmbarque()` não tentam nada enquanto está offline. Na Web (e no Android com o Wi-Fi ligado e o servidor fora do ar) o evento de rede não chega, então nada mais é enviado e o RNF-006 (até 5 min) não é cumprido. Sugestão: deixar a sincronização periódica tentar mesmo offline, ou marcar online quando qualquer chamada à API der certo. |
+| **B = VT-75** | 9 | Corrigido (PR #56): sessão e rota de hoje guardadas no aparelho, botão Sair | **Sem login salvo, abrir o app sem conexão não mostra os pendentes.** O login não fica guardado e a lista de usuários vem do servidor. Sugestão: guardar a sessão (usuário e token) no aparelho e abrir direto na "Rota do dia". |
+| **C = VT-76** | encontrado no 7 | Corrigido (PR #58): fila separada por motorista; 401/403 não apagam | **A fila offline é do aparelho, não do motorista, e pode perder embarques.** Ao abrir o app, ele sincroniza a fila com o token de quem estiver logado: sem login (401) ou com outro usuário. Com o Marcos (sem vínculo), o servidor respondeu 403 para o registro e o app apagou o embarque pendente do João da fila. Só não houve perda porque esse embarque já estava no servidor. Sugestão: guardar na fila quem registrou e só sincronizar com a sessão desse motorista; nunca apagar por 401/403. |
 
 **Observações (não são bugs do código):**
 
@@ -65,6 +96,15 @@ Chrome). O Android não foi testado.
   região de São Paulo (sa-east-1).
 - Depois de recarregar a rota, quem já embarcou aparece só com "Embarcou", sem a hora: o
   `GET /rotas/{rotaId}/alunos` não devolve a hora do embarque.
+- (25/11) Com o login guardado, as abas do mesmo navegador dividem a sessão: ao recarregar,
+  uma aba abre com o último usuário que entrou. Para acompanhar motorista e responsável ao
+  mesmo tempo, use uma janela anônima para o segundo (`app/README.md`).
+- (25/11) Depois de um reset do banco, as sessões guardadas deixam de valer. A "Rota do dia"
+  mostra "Sua sessão expirou. Toque em Sair e entre de novo.", mas a tela "Avisos" mostra a
+  faixa "Sem conexão", porque o 401 é tratado como falta de conexão. Basta tocar em Sair e
+  entrar de novo; vale corrigir a mensagem se der tempo.
+- (25/11) Quando o motorista entra de novo depois de uma falha de rede, a faixa "Sem conexão"
+  pode continuar por até 30 s, até a próxima tentativa de sincronização.
 
 ---
 
