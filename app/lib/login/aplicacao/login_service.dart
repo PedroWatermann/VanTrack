@@ -14,7 +14,8 @@ class LoginException implements Exception {
 /// Login simplificado: lista os usuários e entra no app com um toque.
 ///
 /// Usa GET /usuarios e POST /login (contrato da API, seção 3 do backlog) e
-/// guarda o usuário e o token de acesso na [Sessao].
+/// guarda o usuário e o token de acesso na [Sessao], que os mantém no aparelho
+/// até o usuário sair (Bug VT-75).
 ///
 /// Classe de apoio: o login não é o caso de uso avaliado (UC-S05), mas é ele
 /// que identifica o motorista (RN-012) e o responsável (RN-002).
@@ -49,6 +50,9 @@ class LoginService {
     if (!resposta.sucesso) {
       throw const LoginException('Não foi possível entrar.');
     }
-    sessao.entrar(usuario, resposta.corpo['token'] as String);
+    await sessao.entrar(usuario, resposta.corpo['token'] as String);
   }
+
+  /// Sai do app: apaga a sessão, também a guardada no aparelho (Bug VT-75).
+  Future<void> sair() => sessao.sair();
 }

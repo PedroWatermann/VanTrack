@@ -21,4 +21,12 @@ class RotaDoDia {
         horarioPrevisto: DateTime.parse(json['horarioPrevisto'] as String),
         placa: json['placa'] as String,
       );
+
+  /// Mesmo formato do GET /rotas/hoje, para guardar a rota no aparelho.
+  Map<String, dynamic> paraJson() => {
+        'rotaId': rotaId,
+        'trajeto': trajeto,
+        'horarioPrevisto': horarioPrevisto.toIso8601String(),
+        'placa': placa,
+      };
 }

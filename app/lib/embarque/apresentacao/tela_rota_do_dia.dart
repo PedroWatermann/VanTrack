@@ -34,6 +34,7 @@ class TelaRotaDoDia extends StatefulWidget {
     required this.modulo,
     required this.rotaDoDiaService,
     this.online,
+    this.aoSair,
   });
 
   /// Módulo usado para registrar os embarques.
@@ -44,6 +45,11 @@ class TelaRotaDoDia extends StatefulWidget {
 
   /// Estado da conectividade do aparelho; quando `false`, exibe [FaixaSemConexao] (RNF-003).
   final ValueListenable<bool>? online;
+
+  /// Ação do botão "Sair" da barra do topo (troca de usuário). Sem ela, o
+  /// botão não aparece. A sessão fica guardada no aparelho até o motorista
+  /// sair (Bug VT-75).
+  final VoidCallback? aoSair;
 
   @override
   State<TelaRotaDoDia> createState() => _TelaRotaDoDiaState();
@@ -149,6 +155,9 @@ class _TelaRotaDoDiaState extends State<TelaRotaDoDia> {
             : _Situacao.enviado;
         _horaDoEmbarque[alunoId] = resultado.dataHora;
       });
+      if (resultado.status == StatusEnvio.enviado) {
+        await _guardarEmbarcado(rota.rotaId, alunoId);
+      }
     } on EmbarqueException catch (erro) {
       if (!mounted) return;
       switch (erro.codigoHttp) {
@@ -156,6 +165,7 @@ class _TelaRotaDoDiaState extends State<TelaRotaDoDia> {
           // O aluno já tinha embarcado: ele fica em "Na van".
           setState(() => _horaDoEmbarque.remove(alunoId));
           _avisar('${_nomeDoAluno(alunoId)} já embarcou.');
+          await _guardarEmbarcado(rota.rotaId, alunoId);
         case 403:
           // RN-012: só o motorista ativo da van registra embarques.
           _mostrarErro(_mensagemDeRecusa(403), podeTentarDeNovo: false);
@@ -178,10 +188,20 @@ class _TelaRotaDoDiaState extends State<TelaRotaDoDia> {
     if (!mounted) return;
     if (evento.sincronizado || evento.codigoHttp == 409) {
       setState(() => _situacao[evento.alunoId] = _Situacao.enviado);
+      final rota = _rota;
+      if (rota != null) _guardarEmbarcado(rota.rotaId, evento.alunoId);
       return;
     }
     _voltarParaAguardando(evento.alunoId);
     _avisar('O embarque de ${_nomeDoAluno(evento.alunoId)} foi recusado pelo servidor.');
+  }
+
+  /// Atualiza a rota guardada no aparelho; uma falha aqui não atrapalha o
+  /// embarque, que já foi registrado.
+  Future<void> _guardarEmbarcado(int rotaId, int alunoId) async {
+    try {
+      await widget.rotaDoDiaService.marcarEmbarcado(rotaId, alunoId);
+    } catch (_) {}
   }
 
   void _voltarParaAguardando(int alunoId) {
@@ -215,6 +235,7 @@ class _TelaRotaDoDiaState extends State<TelaRotaDoDia> {
   String _mensagemDeRecusa(int codigoHttp) => switch (codigoHttp) {
         403 => 'Você não é o motorista ativo desta van.', // RN-012
         404 => 'Você não tem rota para hoje.',
+        401 => 'Sua sessão expirou. Toque em Sair e entre de novo.',
         _ => 'Não foi possível carregar a rota. Tente de novo.',
       };
 
@@ -236,6 +257,14 @@ class _TelaRotaDoDiaState extends State<TelaRotaDoDia> {
         title: Text(rota == null || _carregando || _erro != null
             ? 'Rota do dia'
             : 'Rota do dia · ${_nomeDoTrajeto(rota.trajeto)} · ${_horaBrasilia(rota.horarioPrevisto)}'),
+        actions: [
+          if (widget.aoSair != null)
+            IconButton(
+              icon: const Icon(Icons.logout),
+              tooltip: 'Sair',
+              onPressed: widget.aoSair,
+            ),
+        ],
       ),
       body: SafeArea(child: _conteudo()),
     );

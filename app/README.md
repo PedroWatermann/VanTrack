@@ -45,8 +45,15 @@ flutter test
 | `--dart-define=API_URL=...` | Endereço do servidor | `http://localhost:8080` |
 | `--dart-define=USE_MOCK=true` | Usa os dados simulados, sem servidor | `false` |
 
-Para trocar de usuário, recarregue a página (no navegador) ou feche e abra o app: o login
-fica guardado só enquanto o app está aberto.
+O login fica guardado no aparelho: ao fechar e abrir o app (ou recarregar a página), ele
+abre direto na tela de quem entrou, mesmo sem conexão. O motorista vê a última rota de hoje
+carregada no aparelho e os embarques pendentes (teste 9, Bug VT-75). Para trocar de usuário,
+toque em **Sair** (ícone no canto superior direito).
+
+No navegador, as abas da mesma janela dividem o que fica guardado: ao recarregar uma aba,
+ela abre com o último usuário que entrou em qualquer uma delas. Para acompanhar dois
+usuários ao mesmo tempo (ex.: motorista e responsável), use uma janela anônima para o
+segundo.
 
 ## Pastas (lib/)
 

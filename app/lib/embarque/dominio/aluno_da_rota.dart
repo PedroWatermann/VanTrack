@@ -26,4 +26,22 @@ class AlunoDaRota {
         endereco: (json['pontoParada'] as Map<String, dynamic>)['endereco'] as String,
         embarcado: json['status'] == 'EMBARCADO',
       );
+
+  /// Mesmo formato do GET /rotas/{rotaId}/alunos, para guardar no aparelho.
+  Map<String, dynamic> paraJson() => {
+        'alunoId': alunoId,
+        'nome': nome,
+        'ordem': ordem,
+        'pontoParada': {'endereco': endereco},
+        'status': embarcado ? 'EMBARCADO' : 'CONFIRMADO',
+      };
+
+  /// Cópia do aluno marcado como embarcado.
+  AlunoDaRota comoEmbarcado() => AlunoDaRota(
+        alunoId: alunoId,
+        nome: nome,
+        ordem: ordem,
+        endereco: endereco,
+        embarcado: true,
+      );
 }
