@@ -47,6 +47,7 @@ class AvisosApi implements AvisosRemoto {
 
   Future<List<Map<String, dynamic>>> _listar(String caminho) async {
     final resposta = await _api.get(caminho);
+    if (resposta.codigo == 401) throw const SessaoExpiradaException();
     final corpo = resposta.corpo;
     if (!resposta.sucesso || corpo is! List) {
       throw StateError('Não foi possível carregar os avisos.');

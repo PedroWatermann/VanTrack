@@ -7,6 +7,7 @@ import '../../compartilhado/sessao.dart';
 import '../aplicacao/avisos_service.dart';
 import '../dominio/aluno_do_responsavel.dart';
 import '../dominio/aviso.dart';
+import '../dominio/avisos_remoto.dart';
 
 /// Entrega à rota do responsável o serviço que usa sua sessão (UC-I02, RN-002).
 class EscopoAvisos extends InheritedWidget {
@@ -44,6 +45,10 @@ class _TelaAvisosState extends State<TelaAvisos> {
   Timer? _relogio;
   bool _consultando = false;
   bool _semConexao = false;
+
+  /// O servidor recusou o token (401): mostra "entre de novo" em vez de
+  /// "Sem conexão" e para de consultar.
+  bool _sessaoExpirada = false;
   final _emLeitura = <int>{};
   final _lidos = <int>{};
 
@@ -57,6 +62,7 @@ class _TelaAvisosState extends State<TelaAvisos> {
     _dados = null;
     _consultando = false;
     _semConexao = false;
+    _sessaoExpirada = false;
     _emLeitura.clear();
     _lidos.clear();
     _atualizacao?.cancel();
@@ -96,6 +102,15 @@ class _TelaAvisosState extends State<TelaAvisos> {
           }
         }
       });
+    } on SessaoExpiradaException {
+      // Tentar de novo a cada 10 s daria sempre 401: para de consultar.
+      _atualizacao?.cancel();
+      if (mounted && identical(service, _service)) {
+        setState(() {
+          _sessaoExpirada = true;
+          _semConexao = false;
+        });
+      }
     } catch (_) {
       // RNF-003: uma consulta que falhou preserva os dados da última consulta.
       if (mounted && identical(service, _service)) {
@@ -139,7 +154,9 @@ class _TelaAvisosState extends State<TelaAvisos> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_semConexao)
+          if (_sessaoExpirada)
+            const _FaixaSessaoExpirada()
+          else if (_semConexao)
             _FaixaAvisosSemConexao(ultimaAtualizacao: dados?.consultadoEm),
           if (dados != null)
             Padding(
@@ -151,6 +168,8 @@ class _TelaAvisosState extends State<TelaAvisos> {
           Expanded(
             child: dados != null
                 ? _conteudo(dados)
+                : _sessaoExpirada
+                ? const SizedBox.shrink()
                 : _semConexao
                 ? const Center(
                     child: Text('Não foi possível carregar os avisos.'),
@@ -206,6 +225,31 @@ class _TelaAvisosState extends State<TelaAvisos> {
     if (tempo.inMinutes < 1) return 'agora';
     if (tempo.inHours < 1) return 'há ${tempo.inMinutes} min';
     return 'há ${tempo.inHours} h';
+  }
+}
+
+/// Avisa que a sessão não vale mais e como sair dessa situação.
+class _FaixaSessaoExpirada extends StatelessWidget {
+  const _FaixaSessaoExpirada();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: CoresApp.ambar,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: const Row(
+        children: [
+          Icon(Icons.lock_clock, color: Colors.black),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Sua sessão expirou. Toque em Sair e entre de novo.',
+              style: TextStyle(color: Colors.black),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

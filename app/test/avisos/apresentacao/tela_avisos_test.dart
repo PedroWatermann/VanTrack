@@ -284,4 +284,41 @@ void main() {
       expect(find.text('Não foi possível carregar os avisos.'), findsNothing);
     },
   );
+
+  testWidgets(
+    'sessão vencida (401) mostra "entre de novo", não "Sem conexão", e para de consultar',
+    (tester) async {
+      var hora = agora;
+      var vencida = false;
+      final api = await abrirTela(
+        tester,
+        avisos: const [],
+        relogio: () => hora,
+        consultarAvisos: () async => vencida
+            ? const RespostaApi(401, {'erro': 'Não autenticado'})
+            : RespostaApi(200, [aviso(mensagem: 'Aviso já exibido')]),
+      );
+      verify(() => api.get('/notificacoes')).called(1);
+
+      // Reset do banco: o token guardado deixa de valer.
+      vencida = true;
+      hora = hora.add(const Duration(seconds: 10));
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Sua sessão expirou. Toque em Sair e entre de novo.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Sem conexão.'), findsNothing);
+      expect(find.text('Aviso já exibido'), findsOneWidget);
+      verify(() => api.get('/notificacoes')).called(1);
+
+      // Não fica pedindo de novo a cada 10 s.
+      hora = hora.add(const Duration(seconds: 30));
+      await tester.pump(const Duration(seconds: 30));
+      await tester.pumpAndSettle();
+      verifyNever(() => api.get('/notificacoes'));
+    },
+  );
 }
