@@ -22,11 +22,11 @@ registrado no histórico do repositório.
 
 | Membro | Parte no UC-S05 | Nome | RA |
 |---|---|---|---|
-| A | Backend base, seed e integração | | |
-| B | Backend do embarque | | |
-| C | Notificação ponta a ponta (UC-I02) | | |
-| D | App do motorista (UC-R02) | | |
-| E | Modo offline e sincronização (A1, RNF-006) | | |
+| A | Backend base, seed e integração | Pedro Watermann | 145121 |
+| B | Backend do embarque | Vinicius Cielo | 143653 |
+| C | Notificação ponta a ponta (UC-I02) | Luís Freitas | 143379 |
+| D | App do motorista (UC-R02) | Amanda Palacio | 133649 |
+| E | Modo offline e sincronização (A1, RNF-006) | Gustavo Cavalcanti | 145116 |
 
 ## Subir tudo do zero
 
