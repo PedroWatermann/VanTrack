@@ -1,0 +1,403 @@
+@startuml diagrama-classes-uc-s05-app
+' Diagrama 3 de 3 — Aplicativo Flutter: módulo embarque (UC-R02 e fluxo A1),
+' módulo avisos (UC-I02), login e compartilhado. O contrato ModuloEmbarque e
+' seus tipos são EXATAMENTE os da seção 3 do backlog. Task B-01; atualizado com
+' o código real da desenvolvimento na B-12 (VT-64) e em 22/11 (módulo avisos).
+
+title UC-S05 Registrar Embarque — Diagrama de classes (3/3): aplicativo
+
+set namespaceSeparator none
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+skinparam shadowing false
+hide empty members
+' Camadas da esquerda para a direita: o diagrama fica legível numa página.
+left to right direction
+
+' ===================================================================
+package "embarque :: apresentação" as app_apr {
+  class TelaRotaDoDia <<StatefulWidget>> {
+    + modulo : ModuloEmbarque {readOnly}
+    + rotaDoDiaService : RotaDoDiaService {readOnly}
+    + online : ValueListenable<bool>? {readOnly}
+    + abrirRota(rotaId : int) : Future<void>
+    + confirmarEmbarque(alunoId : int) : Future<void>
+  }
+
+  class FaixaSemConexao <<StatelessWidget>> {
+    + semConexao : bool {readOnly}
+  }
+}
+
+note bottom of TelaRotaDoDia
+  abrirRota e confirmarEmbarque ficam no State
+  (_TelaRotaDoDiaState), com a rota, os alunos e a
+  situação de cada um. A tela liga a FaixaSemConexao
+  ao [online] que o main.dart recebe do
+  MonitorConectividade.
+end note
+
+' ===================================================================
+package "embarque :: aplicação" as app_apl {
+
+  enum StatusEnvio {
+    enviado
+    pendente
+  }
+
+  class ResultadoEmbarque {
+    + registroId : String {readOnly}
+    + alunoId : int {readOnly}
+    + dataHora : DateTime {readOnly}
+    + status : StatusEnvio {readOnly}
+  }
+
+  class RegistroPendente {
+    + registroId : String {readOnly}
+    + alunoId : int {readOnly}
+    + dataHora : DateTime {readOnly}
+  }
+
+  class EventoPendente {
+    + registroId : String {readOnly}
+    + alunoId : int {readOnly}
+    + sincronizado : bool {readOnly}
+    + codigoHttp : int? {readOnly}
+  }
+
+  class EmbarqueException <<exception>> {
+    + codigoHttp : int {readOnly}
+    + mensagem : String {readOnly}
+  }
+
+  abstract class ModuloEmbarque <<contrato D-E>> {
+    + {abstract} registrarEmbarque(rotaId : int, alunoId : int) : Future<ResultadoEmbarque>
+    + {abstract} listarPendentes(rotaId : int) : Future<List<RegistroPendente>>
+    + {abstract} aoMudarPendentes : Stream<EventoPendente>
+  }
+
+  class ModuloEmbarqueOnline {
+    + remoto : EmbarqueRemoto {readOnly}
+    + localizador : Localizador {readOnly}
+  }
+
+  class ModuloEmbarqueComFila {
+    + remoto : EmbarqueRemoto {readOnly}
+    + fila : FilaEmbarques {readOnly}
+    + conectividade : Conectividade {readOnly}
+    + localizador : Localizador {readOnly}
+    - sincronizando : bool
+    - eventos : StreamController<EventoPendente>
+    + sincronizar(rotaId : int?) : Future<void>
+  }
+
+  class RotaDoDiaService {
+    + remoto : EmbarqueRemoto {readOnly}
+    + buscarRotaDoDia() : Future<RotaDoDia>
+    + listarAlunosConfirmados(rotaId : int) : Future<List<AlunoDaRota>>
+  }
+}
+
+' ===================================================================
+package "embarque :: domínio" as app_dom {
+
+  class Localizacao <<value object>> {
+    + latitude : double {readOnly}
+    + longitude : double {readOnly}
+  }
+
+  class RotaDoDia {
+    + rotaId : int {readOnly}
+    + trajeto : String {readOnly}
+    + horarioPrevisto : DateTime {readOnly}
+    + placa : String {readOnly}
+  }
+
+  class AlunoDaRota {
+    + alunoId : int {readOnly}
+    + nome : String {readOnly}
+    + ordem : int {readOnly}
+    + endereco : String {readOnly}
+    + embarcado : bool {readOnly}
+  }
+
+  class RegistroEmbarque {
+    + registroId : String {readOnly}
+    + rotaId : int {readOnly}
+    + alunoId : int {readOnly}
+    + dataHora : DateTime {readOnly}
+    + localizacao : Localizacao? {readOnly}
+    + paraJson() : Map<String, dynamic>
+    + {static} deJson(rotaId : int, json : Map<String, dynamic>) : RegistroEmbarque
+  }
+
+  class EnvioRecusadoException <<exception>> {
+    + codigoHttp : int {readOnly}
+    + mensagem : String {readOnly}
+  }
+
+  class SemConexaoException <<exception>>
+
+  interface EmbarqueRemoto <<contrato>> {
+    + buscarRotaDoDia() : Future<RotaDoDia>
+    + listarAlunos(rotaId : int) : Future<List<AlunoDaRota>>
+    + enviar(registro : RegistroEmbarque) : Future<void>
+    + sincronizar(rotaId : int, registros : List<RegistroEmbarque>) : Future<Map<String, int>>
+  }
+
+  interface FilaEmbarques <<contrato>> {
+    + guardar(registro : RegistroEmbarque) : Future<void>
+    + listar(rotaId : int) : Future<List<RegistroEmbarque>>
+    + remover(registroIds : Set<String>) : Future<void>
+  }
+
+  interface Conectividade <<contrato>> {
+    + estaOnline : bool
+    + aoMudar : Stream<bool>
+    + registrarFalhaDeRede() : void
+    + registrarSucessoDeRede() : void
+  }
+
+  interface Localizador <<contrato>> {
+    + obterLocalizacao(limite : Duration) : Future<Localizacao?>
+  }
+}
+
+' ===================================================================
+package "embarque :: infraestrutura" as app_inf {
+  class EmbarqueApi {
+    + api : ApiClient {readOnly}
+  }
+  class ArmazenamentoLocal {
+  }
+  class MonitorConectividade {
+    + online : ValueNotifier<bool> {readOnly}
+    + verificarConectividade() : Future<bool>
+    + monitorarChamada<T>(chamada : Future<T> Function(), limite : Duration) : Future<T>
+  }
+  class LocalizadorGeolocator
+}
+
+note bottom of app_inf
+  ArmazenamentoLocal guarda a fila em JSON no
+  shared_preferences (Android e Web).
+  O ApiClient aplica o timeout de 5 s; o
+  EmbarqueApi converte timeout ou erro de rede
+  em SemConexaoException e a recusa do servidor
+  (403/404/409) em EnvioRecusadoException.
+  monitorarChamada só é usado nos testes.
+end note
+
+' ===================================================================
+package "login (apoio, fora do ciclo de implementação)" as app_login {
+  class TelaLogin <<StatefulWidget>> {
+    + loginService : LoginService {readOnly}
+    + telaDoMotorista : ConstrutorDeTela {readOnly}
+    + telaDoResponsavel : ConstrutorDeTela {readOnly}
+  }
+  class LoginService {
+    + api : ApiClient {readOnly}
+    + sessao : Sessao {readOnly}
+    + listarUsuarios() : Future<List<UsuarioLogado>>
+    + entrar(usuario : UsuarioLogado) : Future<void>
+  }
+  class LoginException <<exception>> {
+    + mensagem : String {readOnly}
+  }
+}
+
+note bottom of app_login
+  ConstrutorDeTela = Widget Function(UsuarioLogado).
+  O main.dart passa as telas de embarque e avisos,
+  então o login não importa esses módulos.
+end note
+
+' ===================================================================
+' Módulo avisos: UC-I02 do lado do responsável (C-06, C-07).
+package "avisos :: apresentação" as app_avisos_apr {
+  class TelaAvisos <<StatefulWidget>> {
+    + usuario : UsuarioLogado {readOnly}
+  }
+  class EscopoAvisos <<InheritedWidget>> {
+    + service : AvisosService {readOnly}
+    + {static} of(context : BuildContext) : AvisosService
+  }
+}
+
+note bottom of app_avisos_apr
+  Atualiza a cada ~10 s (Timer.periodic) e mostra
+  "Atualizado há X s"; sem conexão, mantém os avisos
+  e mostra a faixa (RNF-003); marca como lidos os
+  avisos exibidos. Card por aluno: "Na van desde
+  HH:MM" ou "Aguardando embarque".
+end note
+
+package "avisos :: aplicação" as app_avisos_apl {
+  class AvisosService {
+    - remoto : AvisosRemoto
+    - agora : DateTime Function()
+    + carregar() : Future<AvisosDoDia>
+    + marcarComoLida(notificacaoId : int) : Future<void>
+    + agora() : DateTime
+  }
+  class AvisosDoDia {
+    + alunos : List<AlunoDoResponsavel> {readOnly}
+    + avisos : List<Aviso> {readOnly}
+    + embarquesPorAluno : Map<int, DateTime> {readOnly}
+    + consultadoEm : DateTime {readOnly}
+  }
+}
+
+package "avisos :: domínio" as app_avisos_dom {
+  class Aviso {
+    + id : int {readOnly}
+    + alunoId : int {readOnly}
+    + tipo : String {readOnly}
+    + mensagem : String {readOnly}
+    + dataHora : DateTime {readOnly}
+    + lida : bool {readOnly}
+    + deEmbarque : bool
+  }
+  class AlunoDoResponsavel {
+    + id : int {readOnly}
+    + nome : String {readOnly}
+  }
+  interface AvisosRemoto <<contrato>> {
+    + listarAlunos() : Future<List<AlunoDoResponsavel>>
+    + listarAvisos() : Future<List<Aviso>>
+    + marcarComoLida(notificacaoId : int) : Future<void>
+  }
+}
+
+note bottom of app_avisos_dom
+  aviso.dart também tem horarioEmBrasilia(dataHora),
+  usado para mostrar HH:MM em UTC-3.
+end note
+
+package "avisos :: infraestrutura" as app_avisos_inf {
+  class AvisosApi {
+    - api : ApiClient
+  }
+}
+
+note bottom of app_avisos_inf
+  GET /alunos, GET /notificacoes e
+  PATCH /notificacoes/{id}/lida.
+end note
+
+' ===================================================================
+package "compartilhado (apoio)" as app_comp {
+  class ApiClient {
+    + baseUrl : String {readOnly}
+    + sessao : Sessao {readOnly}
+    - mock : DadosMock?
+    + get(caminho : String) : Future<RespostaApi>
+    + post(caminho : String, corpo : Object?) : Future<RespostaApi>
+    + patch(caminho : String, corpo : Object?) : Future<RespostaApi>
+  }
+  class RespostaApi {
+    + codigo : int {readOnly}
+    + corpo : dynamic {readOnly}
+    + sucesso : bool
+  }
+  class Sessao {
+    - usuario : UsuarioLogado?
+    - token : String?
+    + logado : bool
+    + entrar(usuario : UsuarioLogado, token : String) : void
+    + sair() : void
+  }
+  class UsuarioLogado {
+    + id : int {readOnly}
+    + nome : String {readOnly}
+    + papel : Papel {readOnly}
+  }
+  enum Papel {
+    motorista
+    responsavel
+  }
+  class DadosMock <<USE_MOCK>>
+  class Config <<API_URL, USE_MOCK>>
+  class CoresApp
+}
+
+' ===================================================================
+' Apresentação -> aplicação
+TelaRotaDoDia --> "1" ModuloEmbarque
+TelaRotaDoDia --> "1" RotaDoDiaService
+TelaRotaDoDia *-- "1" FaixaSemConexao
+TelaRotaDoDia ..> EmbarqueException : <<trata 403/404/409>>
+TelaRotaDoDia ..> EventoPendente : <<escuta>>
+
+' Contrato D-E (Dart: "implements ModuloEmbarque" -> realização)
+ModuloEmbarqueOnline ..|> ModuloEmbarque
+ModuloEmbarqueComFila ..|> ModuloEmbarque
+ModuloEmbarque ..> ResultadoEmbarque
+ModuloEmbarque ..> RegistroPendente
+ModuloEmbarque ..> EventoPendente
+ModuloEmbarque ..> EmbarqueException : <<lança>>
+ResultadoEmbarque --> StatusEnvio
+
+' Aplicação -> domínio (contratos)
+ModuloEmbarqueOnline --> "1" EmbarqueRemoto
+ModuloEmbarqueOnline --> "1" Localizador
+ModuloEmbarqueComFila --> "1" EmbarqueRemoto
+ModuloEmbarqueComFila --> "1" FilaEmbarques
+ModuloEmbarqueComFila --> "1" Conectividade
+ModuloEmbarqueComFila --> "1" Localizador
+ModuloEmbarqueComFila ..> RegistroEmbarque : <<cria>>
+RotaDoDiaService --> "1" EmbarqueRemoto
+RotaDoDiaService ..> RotaDoDia
+EmbarqueRemoto ..> EnvioRecusadoException : <<lança>>
+EmbarqueRemoto ..> SemConexaoException : <<lança>>
+RegistroEmbarque *-- Localizacao
+
+' Infraestrutura realiza os contratos do domínio
+EmbarqueApi ..|> EmbarqueRemoto
+ArmazenamentoLocal ..|> FilaEmbarques
+MonitorConectividade ..|> Conectividade
+LocalizadorGeolocator ..|> Localizador
+EmbarqueApi --> "1" ApiClient
+
+' Login e compartilhado
+TelaLogin --> "1" LoginService
+LoginService --> "1" ApiClient
+LoginService --> "1" Sessao
+LoginService ..> LoginException : <<lança>>
+ApiClient --> "1" Sessao : token >
+ApiClient ..> RespostaApi
+ApiClient --> "0..1" DadosMock
+Sessao --> "0..1" UsuarioLogado
+UsuarioLogado --> Papel
+TelaAvisos --> UsuarioLogado
+
+' Avisos: apresentação -> aplicação -> domínio <- infraestrutura
+TelaAvisos ..> EscopoAvisos : <<obtém o service>>
+EscopoAvisos --> "1" AvisosService
+TelaAvisos ..> AvisosDoDia
+AvisosService --> "1" AvisosRemoto
+AvisosService ..> AvisosDoDia : <<cria>>
+AvisosDoDia --> "0..*" Aviso
+AvisosDoDia --> "0..*" AlunoDoResponsavel
+AvisosRemoto ..> Aviso
+AvisosRemoto ..> AlunoDoResponsavel
+AvisosApi ..|> AvisosRemoto
+AvisosApi --> "1" ApiClient
+
+note right of ModuloEmbarqueComFila
+  Fluxo A1 (RNF-006):
+  - toque offline ou SemConexaoException -> fila, StatusEnvio.pendente
+  - EnvioRecusadoException (403/404/409) -> EmbarqueException, nunca fila
+  - ao reconectar / a cada 30 s / ao abrir: sincronizar()
+  - remove só o que o servidor confirmou (201/200);
+    4xx sai da fila e é avisado em aoMudarPendentes;
+    o resto (ex.: 503) fica para a próxima tentativa
+end note
+
+note top of app_comp
+  main.dart (composição): cria Sessao, ApiClient,
+  EmbarqueApi, MonitorConectividade e o
+  ModuloEmbarqueComFila (uma linha troca pelo Online).
+end note
+
+@enduml

@@ -1,0 +1,43 @@
+@startuml UC-R02
+title UC-R02 — Registrar Embarque pela Tela da Rota (Revisado — E-07 / VT-65)
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+autonumber
+
+actor "Motorista" as M
+boundary "TelaRotaDoDia" as T
+participant "Servidor (API)" as API
+boundary "TelaAvisos" as Avisos
+actor "Responsável" as R
+
+M -> T : Abre a tela "Rota do dia" (cabeçalho + paradas)
+alt Motorista sem vínculo ativo (RN-012)
+    T -> API : GET /rotas/hoje
+    API --> T : 403 "Você não é o motorista ativo desta van."
+    T --> M : Exibe acesso negado, sem lista de alunos
+else Motorista ativo com rota hoje
+    T -> API : GET /rotas/{rotaId}/alunos
+    API --> T : Lista de alunos confirmados (sem ausentes — RN-010)
+    T --> M : Destaca "PRÓXIMA PARADA" com botão grande "EMBARCOU"
+    M -> T : Dá um toque em "EMBARCOU" (RNF-005)
+
+    alt Caminho de sucesso — com conexão
+        T -> API : POST /rotas/{rotaId}/embarques (registroId, dataHora, localizacao?)
+        API --> T : 201 ok
+        T --> M : Check verde "Embarcou às HH:MM" em "NA VAN" e destaca próxima parada
+        Avisos -> API : GET /notificacoes (polling ~10 s)
+        API --> Avisos : Aviso com a hora do embarque
+        Avisos --> R : Exibe "<aluno> embarcou na van às HH:MM."
+    else E1 — Sem conexão (RNF-003, RNF-006)
+        T -> T : Exibe faixa âmbar "Sem conexão" e guarda localmente
+        T --> M : Ícone âmbar "Pendente de sincronização" em "NA VAN"
+        ... ao reconectar (até 5 min) ...
+        T -> API : POST /rotas/{rotaId}/embarques/sincronizar
+        API --> T : 200 ok (confirmados)
+        T --> M : Troca ícone âmbar pelo check verde e oculta a faixa
+        Avisos -> API : GET /notificacoes (polling ~10 s)
+        API --> Avisos : Aviso com a hora original do toque
+        Avisos --> R : Exibe "<aluno> embarcou na van às HH:MM."
+    end
+end
+@enduml
