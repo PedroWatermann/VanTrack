@@ -16,14 +16,21 @@ e a rastreabilidade estão na [arquitetura do projeto](03-arquitetura.md).
 
 ## Antes de apresentar
 
-- Prepare o [ambiente com a API real e os dados do seed](../../README.md#subir-tudo-do-zero).
-  Combine com o grupo a preparação do banco da demo. Confirme que Ana e Beatriz
+- Prepare o [ambiente com a API real e os dados do seed](../../README.md#subir-tudo-do-zero)
+  e rode `dart run bin/reset_db.dart` no banco da demo (vantrack-demo) pouco antes de
+  apresentar. A rota do seed é criada para o dia do reset. Confirme que Ana e Beatriz
   aparecem na rota e ainda aguardam embarque.
-- Deixe as três sessões abertas: **João Pereira** no Android, em **Rota do dia**,
-  e **Maria Souza** (Ana) e **Fernanda Reis** (Beatriz) em duas abas de **Avisos** no Chrome.
-- Ensaie desligar e religar a rede só no Android do motorista, com a API em execução.
-  Se for apresentar tudo no Chrome, valide no ensaio que a simulação de queda e volta
-  da rede do motorista dispara a sincronização.
+- A demo é toda no Chrome (app Web). Abra três abas e entre uma vez em cada:
+  **João Pereira**, em **Rota do dia**; **Maria Souza** (Ana) e **Fernanda Reis**
+  (Beatriz), em **Avisos**. Entre com o João **por último**.
+- **Não recarregue as abas.** O login fica guardado no navegador e as abas dividem esse
+  registro: uma aba recarregada abre com o último usuário que entrou. Para trocar de
+  usuário em uma aba, use o botão **Sair** (canto superior direito).
+- **Simule a falta de conexão parando o backend**, com Ctrl+C no terminal do
+  `dart_frog dev`, e religue-o com `dart_frog dev`. Foi assim que os testes de aceitação
+  rodaram. Enquanto o backend está parado, a aba da Fernanda também mostra "Sem conexão",
+  mas mantém os últimos dados. O app tenta sincronizar a cada 30 s, então a Beatriz fica
+  verde em até 30 s depois que o backend volta.
 
 ## Sequência da demonstração
 
@@ -31,13 +38,14 @@ e a rastreabilidade estão na [arquitetura do projeto](03-arquitetura.md).
 |---|---|---|---|
 | 0:00–0:30 | Abra **Rota do dia** como João e mostre a próxima parada. | Ana, Beatriz e Carlos aparecem na ordem da rota. Bruno, ausente, fica fora da lista. | 1 · RN-010 |
 | 0:30–1:30 | Toque em **Embarcou** na Ana e alterne entre os **Avisos** de Maria e Fernanda. | Com um toque, Ana passa para **Na van**. Maria recebe o aviso com o horário do embarque. Fernanda vê apenas Beatriz, ainda aguardando. | 2–4 · UC-I02, RF-011, RN-002 e RNF-005 |
-| 1:30–2:30 | Desligue a rede do motorista, registre o embarque da Beatriz e anote a hora. Confira a aba da Fernanda antes de religar a rede. | O motorista vê **Sem conexão** e **Pendente de sincronização**. Para Fernanda, Beatriz ainda está aguardando. | 8 · RNF-003 e RNF-006 |
-| 2:30–4:00 | Após mudar o minuto, religue a rede do motorista e mantenha a tela aberta. Quando sair de **Pendente de sincronização**, mostre o aviso da Fernanda. | O registro é enviado automaticamente. O horário do aviso corresponde ao do toque, mesmo com o envio posterior. | 10 · A1 do UC-S05 e RNF-006 |
+| 1:30–2:30 | Pare o backend, registre o embarque da Beatriz e anote a hora. Confira a aba da Fernanda antes de religar o backend. | O motorista vê **Sem conexão** e **Pendente de sincronização**. Para Fernanda, Beatriz ainda está aguardando. | 8 · RNF-003 e RNF-006 |
+| 2:30–4:00 | Após mudar o minuto, religue o backend e mantenha a tela aberta. Em até 30 s, a Beatriz sai de **Pendente de sincronização**: mostre o aviso da Fernanda. | O registro é enviado automaticamente. O horário do aviso corresponde ao do toque, mesmo com o envio posterior. | 10 · A1 do UC-S05 e RNF-006 |
 
 ## Validação técnica da entrega
 
-A revisão usou a `desenvolvimento` no commit `c572d2b`. Passaram **85 testes
-automatizados do app** e **134 testes do backend sem banco**. Uma consulta de
+A revisão final, em 25/11, usou a `desenvolvimento` com as correções dos testes de
+aceitação. Passaram **108 testes automatizados do app** e **134 testes do backend sem
+banco**. Uma consulta de
 leitura ao PostgreSQL confirmou a tabela de avisos com RLS ativa e as duas chaves
 estrangeiras para aluno e responsável.
 
@@ -56,9 +64,10 @@ A organização atual de **Avisos** está nas entregas integradas
 [VT-47](https://github.com/PedroWatermann/VanTrack/pull/46). O ponto 19 da
 arquitetura descreve a etapa anterior à integração.
 
-Os resultados acima são de testes automatizados e inspeção do banco. O registro
-da execução dos dez cenários pela equipe fica na [tabela da VT-63](05-testes-aceitacao.md#resultados),
-que ainda está sem resultados preenchidos.
+Os resultados acima são de testes automatizados e inspeção do banco. A execução dos dez
+cenários está na [tabela da VT-63](05-testes-aceitacao.md#resultados). Na 1ª execução
+(24/11) apareceram os bugs VT-75, VT-76 e VT-77; depois das correções, a 2ª execução
+(25/11) passou nos 10.
 
 ## Evidências do Jira
 

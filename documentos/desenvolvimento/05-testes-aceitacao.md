@@ -34,8 +34,8 @@ Os bugs estão em [Bugs encontrados](#bugs-encontrados). No 5 e no 7 o teste pas
 neles que os bugs VT-77 e VT-76 apareceram.
 
 **1ª execução:** 24/11/2026, das 21:10 às 21:22 · commit da `desenvolvimento` testado
-`32361cc` · banco: **projeto Supabase de desenvolvimento do Membro A** (não o
-vantrack-demo), com o reset aplicado antes · backend com `dart_frog dev` · app: Web (build
+`32361cc` · banco: **vantrack-demo** (projeto Supabase compartilhado, em us-east-1),
+com o reset aplicado antes · backend com `dart_frog dev` · app: Web (build
 de produção no Chrome). O Android não foi testado.
 
 **2ª execução:** 25/11/2026, das 08:11 às 08:20 · commit da `desenvolvimento` testado
@@ -91,9 +91,9 @@ são os nomes usados na 1ª execução.
 
 **Observações (não são bugs do código):**
 
-- O banco usado fica em us-east-1, e cada consulta levou de 0,6 s a 5 s. Com o limite de 5 s
-  do app, um servidor lento parece "sem conexão". Para a demo, crie o vantrack-demo na
-  região de São Paulo (sa-east-1).
+- O vantrack-demo fica em us-east-1, e cada consulta levou de 0,6 s a 5 s. Com o limite de
+  5 s do app, um servidor lento parece "sem conexão". Depois da VT-77, o app se recupera
+  sozinho na próxima tentativa (até 30 s). Na 2ª execução isso não aconteceu.
 - Depois de recarregar a rota, quem já embarcou aparece só com "Embarcou", sem a hora: o
   `GET /rotas/{rotaId}/alunos` não devolve a hora do embarque.
 - (25/11) Com o login guardado, as abas do mesmo navegador dividem a sessão: ao recarregar,

@@ -9,11 +9,24 @@ Software (UEM). Esta entrega implementa o caso de uso **UC-S05 Registrar Embarqu
 | `backend/` | API REST em Dart Frog | [backend/README.md](backend/README.md) |
 | `app/` | App Flutter (motorista e responsável) | [app/README.md](app/README.md) |
 | `supabase/` | Migrations e dados de teste (seed) do PostgreSQL | rodam pelo reset do backend |
-| `documentos/desenvolvimento/` | Arquitetura e diagrama de classes do UC-S05 | [03-arquitetura.md](documentos/desenvolvimento/03-arquitetura.md) |
+| `documentos/desenvolvimento/` | Arquitetura e diagrama de classes, testes de aceitação, roteiro da demo e checklist da entrega | [03-arquitetura.md](documentos/desenvolvimento/03-arquitetura.md) · [05-testes-aceitacao.md](documentos/desenvolvimento/05-testes-aceitacao.md) · [06-roteiro-demo.md](documentos/desenvolvimento/06-roteiro-demo.md) · [07-checklist-entrega.md](documentos/desenvolvimento/07-checklist-entrega.md) |
 | `documentos/revisao-1-bimestre/` | Artefatos do 1º bimestre revisados conforme a implementação (E-07 / VT-65) | [revisao-1-bimestre/README.md](documentos/revisao-1-bimestre/README.md) |
 
 O Supabase é usado **só como banco PostgreSQL**: o app fala apenas com a API, e a API fala
 com o banco.
+
+## Equipe
+
+Cada membro preenche a própria linha com o nome e o RA, em um commit seu, para ficar
+registrado no histórico do repositório.
+
+| Membro | Parte no UC-S05 | Nome | RA |
+|---|---|---|---|
+| A | Backend base, seed e integração | | |
+| B | Backend do embarque | | |
+| C | Notificação ponta a ponta (UC-I02) | | |
+| D | App do motorista (UC-R02) | | |
+| E | Modo offline e sincronização (A1, RNF-006) | | |
 
 ## Subir tudo do zero
 

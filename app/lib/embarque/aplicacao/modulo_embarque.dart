@@ -42,6 +42,16 @@ class EmbarqueException implements Exception {
   const EmbarqueException(this.codigoHttp, this.mensagem);
 }
 
+/// `ModuloEmbarque` — embarque :: aplicação (contrato entre a tela e o envio).
+///
+/// Responsabilidade: registrar o embarque com um toque, com a hora e a
+/// localização do momento do toque, e informar os registros que ainda estão
+/// pendentes de sincronização.
+///
+/// RN-010 (embarque só de aluno com presença confirmada, confirmado pelo
+/// motorista); RF-009 (registrar embarque); RNF-005 (um toque, GPS até 2 s);
+/// RNF-006 (sem conexão, guarda e sincroniza em até 5 min).
+/// UC-S05 passos 2 a 4 e fluxo alternativo A1; UC-R02 passos 3 a 5 e E1.
 abstract class ModuloEmbarque {
   /// Captura data/hora e localização (opcional, até 2 s), gera o registroId e envia.
   /// Lança EmbarqueException em 403/404/409.
